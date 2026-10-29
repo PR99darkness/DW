@@ -1,0 +1,3341 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>地城世界：新月島餘燼 - 單人冒險模擬器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Mammoth.js for direct .docx Word file text extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #111827;
+            --bg-card: #1e293b;
+            --accent-fire: #f97316;
+            --accent-ember: #dc2626;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-primary);
+            color: #e2e8f0;
+            overflow: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .font-mono-code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .chat-message {
+            animation: slideUpFade 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+            user-select: text;
+        }
+
+        @keyframes slideUpFade {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 12px rgba(249, 115, 22, 0.35); }
+            50% { box-shadow: 0 0 22px rgba(220, 38, 38, 0.65); }
+        }
+
+        .ember-glow {
+            animation: pulseGlow 3s infinite;
+        }
+
+        /* Canvas container responsive */
+        #mapCanvas {
+            background-color: #090d16;
+            border-radius: 0.75rem;
+            border: 1px solid #334155;
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none;
+        }
+
+        /* Mobile View Switching (Only below 1024px) */
+        @media (max-width: 1023px) {
+            .mobile-panel {
+                display: none !important;
+            }
+            .mobile-panel.active-mobile-tab {
+                display: flex !important;
+            }
+            /* Point 2: Expand map container to large height on mobile & scroll down for regional intel */
+            #mobileMapCanvasCard {
+                height: 64dvh !important;
+                min-height: 400px !important;
+                flex: 0 0 auto !important;
+            }
+        }
+    </style>
+</head>
+<body class="h-[100dvh] w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+
+    <!-- Top Navbar (Widescreen & Mobile Compact Header - Fixed right-side clipping on mobile) -->
+    <header class="bg-slate-900/95 border-b border-slate-800 px-2.5 py-2 lg:px-5 lg:py-2.5 flex justify-between items-center gap-2 shrink-0 z-30 shadow-lg">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+            <div class="w-8 h-8 lg:w-9 lg:h-9 rounded-lg bg-gradient-to-br from-orange-500 via-red-600 to-purple-800 flex items-center justify-center shadow-md ember-glow shrink-0">
+                <i class="fa-solid fa-fire-flame-curved text-white text-base lg:text-lg"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xs sm:text-sm lg:text-base font-black tracking-wide text-white truncate">地城世界：新月島餘燼</h1>
+                    <span class="hidden sm:inline-block text-[10px] bg-orange-500/20 text-orange-300 border border-orange-500/40 rounded px-1.5 py-0.5 font-mono-code shrink-0">Ch.3 風嘯山谷與熔爐關口 (續)</span>
+                </div>
+                <p id="headerLocationSub" class="text-[11px] text-slate-400 truncate">
+                    <i class="fa-solid fa-location-crosshairs text-orange-400 mr-1"></i>破岩鎮 - 熔爐關口內部
+                </p>
+            </div>
+        </div>
+
+        <!-- Hidden elements kept for JS compatibility (HP & Brand are shown in 狀態/物品 tab as requested) -->
+        <div class="hidden">
+            <span id="mobileHpDisplay">17/20</span>
+            <span id="mobileBrandDisplay">3/3</span>
+        </div>
+
+        <!-- Right Controls & World Clock (Compact & never clipped on mobile) -->
+        <div class="flex items-center gap-1.5 lg:gap-2.5 shrink-0">
+            <div id="worldTimeDisplay" title="世界時間隨行動與旅途同步流逝" class="bg-slate-800/90 px-2 py-1 lg:px-2.5 rounded-lg text-[11px] lg:text-xs text-amber-300 font-mono-code border border-slate-700 flex items-center gap-1 whitespace-nowrap">
+                <i class="fa-regular fa-clock text-orange-400"></i>
+                <span id="clockText">第 2 天 17:30</span>
+            </div>
+
+            <button onclick="openModal('codexModal')" class="hidden lg:flex bg-slate-800 hover:bg-slate-700 text-sky-300 px-2.5 py-1.5 rounded-lg text-xs border border-slate-700 transition items-center gap-1" title="查閱職業動作、基本動作與怪物規則圖鑑">
+                <i class="fa-solid fa-book-bookmark text-sky-400"></i>
+                <span class="hidden md:inline">規則圖鑑</span>
+            </button>
+
+            <button onclick="openModal('loreModal')" class="hidden lg:flex bg-slate-800 hover:bg-slate-700 text-indigo-300 px-2.5 py-1.5 rounded-lg text-xs border border-slate-700 transition items-center gap-1" title="管理 NotebookLM 風格記憶來源與上傳參考檔案">
+                <i class="fa-solid fa-database text-indigo-400"></i>
+                <span class="hidden md:inline">知識庫來源</span>
+                <span id="activeSourcesBadge" class="bg-indigo-500/30 text-indigo-200 px-1 rounded text-[10px] font-mono-code">5</span>
+            </button>
+
+            <button onclick="openModal('archiveModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 lg:px-2.5 rounded-lg text-xs border border-slate-700 transition flex items-center gap-1" title="檢視冒險傳奇存檔與跨裝置同步">
+                <i class="fa-solid fa-cloud-arrow-up text-amber-400"></i>
+                <span class="hidden xl:inline">冒險存檔</span>
+            </button>
+
+            <button onclick="openModal('settingsModal')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1.5 lg:px-2.5 rounded-lg text-xs border border-slate-700 transition flex items-center gap-1.5" title="AI 設定與 API 金鑰">
+                <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                <i class="fa-solid fa-sliders"></i>
+                <span class="hidden sm:inline" id="apiStatusText">AI 設定</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Widescreen 3-Column Workspace (Left: Status/Inventory | Center: 2D Radar Map | Right: GM Live Stream) -->
+    <div class="flex-1 flex flex-row overflow-hidden relative min-h-0">
+
+        <!-- ================= LEFT COLUMN: READ-ONLY CHARACTER STATUS, BRAND TAGS, ATTRIBUTE REASONS & CATEGORIZED INVENTORY ================= -->
+        <aside id="tab-character" class="mobile-panel w-full lg:w-[330px] xl:w-[360px] bg-slate-900 border-r border-slate-800 flex flex-col overflow-y-auto p-3 gap-3 shrink-0 z-10">
+            
+            <!-- Character Identity Card (Read-Only, Driven by GM & Narrative) -->
+            <div class="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/90 shadow-inner relative">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-600 via-red-600 to-purple-900 flex items-center justify-center text-xl font-bold shadow-lg border border-orange-400/40 relative shrink-0">
+                            <i class="fa-solid fa-fire-burner text-white"></i>
+                            <span class="absolute -bottom-1 -right-1 bg-red-600 text-[9px] font-mono-code px-1 rounded text-white border border-slate-900" title="鮮紅如火的右眼">右眼赤紅</span>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 id="charName" class="text-base font-black text-white tracking-wide">伊格尼斯 (Ignis)</h2>
+                                <span id="charLevelBadge" class="text-[11px] bg-orange-500/20 text-orange-300 border border-orange-500/40 px-1.5 py-0.2 rounded font-mono-code font-bold">Lv.3</span>
+                            </div>
+                            <p class="text-xs text-slate-400">人類 燔祭者 (Immolator) · 中立/邪惡</p>
+                            <p class="text-[11px] text-amber-400/90 mt-0.5"><i class="fa-solid fa-ring mr-1"></i>左手中指鑲嵌不滅黑曜石戒</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vital Bars: HP & XP (No manual buttons; purely GM & dice driven) -->
+                <div class="mt-3 space-y-2">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-red-400 font-medium flex items-center gap-1">
+                                <i class="fa-solid fa-heart"></i> 生命值 (HP)
+                                <span class="text-[10px] text-slate-500">(基礎4+體質16)</span>
+                            </span>
+                            <span id="hpText" class="font-mono-code font-bold text-white">17 / 20</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                            <div id="hpBar" class="bg-gradient-to-r from-red-600 to-orange-500 h-2 rounded-full transition-all duration-300" style="width: 85%"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-sky-400 font-medium flex items-center gap-1">
+                                <i class="fa-solid fa-star"></i> 經驗值 (XP)
+                                <span class="text-[10px] text-slate-500">(升Lv.4需10點)</span>
+                            </span>
+                            <span id="xpText" class="font-mono-code font-bold text-white">5 / 10</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div id="xpBar" class="bg-gradient-to-r from-sky-500 to-indigo-500 h-1.5 rounded-full transition-all duration-300" style="width: 50%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Secondary Combat Badges -->
+                <div class="grid grid-cols-3 gap-1.5 mt-3 text-center">
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+                        <div class="text-[10px] text-slate-400">護甲 (Armor)</div>
+                        <div id="armorDisplay" class="text-sm font-mono-code font-bold text-amber-300">1 <span class="text-[10px] font-normal text-slate-500">(輕盾)</span></div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+                        <div class="text-[10px] text-slate-400">傷害骰</div>
+                        <div id="dmgDieDisplay" class="text-sm font-mono-code font-bold text-orange-400">1d8</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-lg p-1.5" title="隨身攜帶總重 / 負載上限 (9+STR)">
+                        <div class="text-[10px] text-slate-400">目前負重</div>
+                        <div id="loadDisplay" class="text-sm font-mono-code font-bold text-emerald-400">8 / 9</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Burning Brand Status Widget + Expandable Tag Dictionary (燃燒之劍狀態與詞條細項選單) -->
+            <div class="bg-gradient-to-br from-purple-950/60 via-slate-900 to-orange-950/40 p-3 rounded-xl border border-purple-700/50 shadow-md">
+                <div class="flex justify-between items-center mb-1.5">
+                    <span class="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-fire-flame-Simple text-orange-400"></i> 燃燒之劍 (Burning Brand)
+                    </span>
+                    <span id="brandUsesText" class="font-mono-code text-xs font-bold bg-orange-950/80 text-orange-300 border border-orange-500/40 px-2 py-0.5 rounded-md">3 / 3 次</span>
+                </div>
+                <div class="text-[10px] text-slate-400 mb-1">當前生效標籤（隨召喚與敘事刷新）：</div>
+                <div id="brandTagsContainer" class="flex flex-wrap gap-1 mt-1">
+                    <!-- Injected via JS -->
+                </div>
+                <div id="ffwfBonusBanner" class="hidden mt-2 bg-orange-500/20 border border-orange-500/50 rounded p-1.5 text-[11px] text-orange-200 flex items-center justify-between">
+                    <span><i class="fa-solid fa-fire-flame-simple mr-1"></i>以火攻火 / 敘事加值生效中</span>
+                    <span id="ffwfBonusVal" class="font-mono-code font-bold">+0</span>
+                </div>
+
+                <!-- Expandable Tag Meaning Menu -->
+                <details class="mt-2.5 bg-slate-950/85 rounded-lg border border-purple-800/40 text-[11px] group">
+                    <summary class="px-2.5 py-1.5 cursor-pointer text-purple-200 font-medium flex items-center justify-between select-none hover:text-white transition">
+                        <span><i class="fa-solid fa-circle-info text-orange-400 mr-1"></i>展開檢視【燃燒之劍 & 殺戮之火】詞條細項意涵</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] transition-transform group-open:rotate-180"></i>
+                    </summary>
+                    <div class="p-2.5 border-t border-slate-800/90 space-y-1.5 text-slate-300 leading-relaxed max-h-60 overflow-y-auto">
+                        <div><strong class="text-orange-300">• [烈焰 (Fiery)] (預設)：</strong>純粹火焰構成，進行【砍劈】或【射擊】時可用<span class="text-sky-300">智力(+2)</span>取代力量或敏捷；接觸易燃物瞬間引燃。</div>
+                        <div><strong class="text-orange-300">• [接觸 / 觸及 (Hand)] (預設)：</strong>適合攻擊徒手接觸距離（約 2~3 呎內）的目標。</div>
+                        <div><strong class="text-red-400">• [危險 (Dangerous) / 移除危險] (可選)：</strong>燃燒之劍起始帶有［危險］，若未選擇移除，擲骰失敗時烈焰可能失控反噬自身；選擇「移除危險」則火刃絕對穩定。</div>
+                        <div><strong class="text-amber-300">• [+1 傷害] (可選)：</strong>聖火溫度暴漲，每次造成傷害時額外 +1 點（變為 1d8+1）。</div>
+                        <div><strong class="text-sky-300">• [及遠 (Reach)] (可選 / 殺戮之火)：</strong>火刃延伸至 10 英尺長，可攻擊數呎外的敵人或進行十呎火環橫掃。</div>
+                        <div><strong class="text-sky-300">• [投擲 / 短程 (Thrown / Near)] (可選 / 殺戮之火)：</strong>可將火劍化作火流星擲出，攻擊能看見眼白距離（約 30 呎）內的目標。</div>
+                        <div><strong class="text-indigo-300">• [遠程 (Far)] (Lv.2 殺戮之火專屬)：</strong>可化作咆哮火龍，遠距轟擊吶喊可達範圍（約 60 呎以上）的目標。</div>
+                        <div><strong class="text-rose-400">• [毀亂 (Messy)] (Lv.2 殺戮之火專屬)：</strong>火焰具高速鋸齒般的物理撕裂力，以毀滅性方式將敵人甲冑或肢體絞碎（如地窖絞肉機、山谷口瞬殺四敵）。</div>
+                        <div><strong class="text-emerald-300">• [強力 (Forceful)] (Lv.2 殺戮之火專屬)：</strong>附帶劇烈物理爆破衝擊，可迫使重型目標後退、失衡或撞飛倒地。</div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- 6 Attributes & Debilities (Click to inspect detailed score/modifier breakdown & history) -->
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                <div class="flex justify-between items-center mb-1.5">
+                    <h3 class="text-xs font-bold text-slate-300">六維屬性 & 調整值狀態</h3>
+                    <span class="text-[10px] text-orange-400"><i class="fa-regular fa-hand-pointer mr-0.5"></i>點擊數值檢視增減原因</span>
+                </div>
+                <div class="grid grid-cols-2 gap-1.5 text-xs" id="statsContainer">
+                    <!-- Injected via JS (Clicking any card shows detailed breakdown below) -->
+                </div>
+                <!-- Attribute Detail Breakdown Drawer -->
+                <div id="statBreakdownBox" class="mt-2 p-2.5 rounded-lg bg-slate-900/95 border border-orange-500/40 text-[11px] text-slate-200 leading-relaxed">
+                    <!-- Populated via JS (Defaults to showing CON/INT or clicked stat) -->
+                </div>
+            </div>
+
+            <!-- Active Companions -->
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                <h3 class="text-xs font-bold text-slate-400 mb-2 flex items-center justify-between">
+                    <span><i class="fa-solid fa-users text-indigo-400 mr-1"></i>同行夥伴 & 駐點後勤</span>
+                    <span class="text-[10px] text-indigo-300 font-mono-code">小隊 3 人</span>
+                </h3>
+                <div id="companionsList" class="space-y-1.5 text-xs">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+
+            <!-- Inventory & Categorized Relics (With Load Reference, Read-Only Gold, Text Search & Lore Click) -->
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex-1 flex flex-col min-h-[280px]">
+                <div class="flex justify-between items-start mb-2 pb-1.5 border-b border-slate-800">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sack-xmark text-amber-400"></i> 物品欄 & 傳奇聖物
+                        </h3>
+                        <p id="sidebarLoadSummary" class="text-[10px] text-emerald-400 font-mono-code mt-0.5">
+                            目前總重：8 / 9 上限 (含300G=3w)
+                        </p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                        <span id="goldDisplay" class="text-xs font-mono-code text-amber-400 font-bold" title="每100枚金幣計為1重量，由劇情交易更新"><i class="fa-solid fa-coins mr-1"></i>300 G</span>
+                        <button onclick="openModal('inventoryModal')" class="text-[10px] bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 px-2 py-0.5 rounded border border-indigo-500/40 transition">
+                            <i class="fa-solid fa-expand mr-0.5"></i>展開圖鑑
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Text Search Input in Sidebar -->
+                <div class="relative mb-2">
+                    <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-[10px] text-slate-500"></i>
+                    <input id="sidebarItemSearch" type="text" oninput="renderInventoryLists()" placeholder="文字搜尋物品、標籤或第1~3章典故..." class="w-full bg-slate-900 border border-slate-800 focus:border-orange-500 rounded-lg pl-7 pr-2 py-1 text-[11px] text-slate-200 outline-none">
+                </div>
+
+                <!-- Inline Clicked Item Lore Drawer in Sidebar -->
+                <div id="sidebarItemLoreBox" class="hidden mb-2 p-2.5 rounded-lg bg-gradient-to-br from-orange-950/70 via-slate-900 to-purple-950/50 border border-orange-500/50 text-[11px] text-slate-200 leading-relaxed">
+                    <!-- Populated when an item is clicked -->
+                </div>
+
+                <div id="inventoryList" class="overflow-y-auto flex-1 text-xs text-slate-300 space-y-2.5 pr-1">
+                    <!-- Categorized items injected via JS -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================= CENTER COLUMN: 2D COORDINATE MAP & WORLD CLOCK ================= -->
+        <main id="tab-map" class="mobile-panel flex-1 min-w-0 bg-slate-950 flex flex-col p-2 sm:p-3.5 overflow-y-auto lg:overflow-hidden relative">
+            
+            <!-- Map Mode Switcher & Coordinate Header -->
+            <div class="w-full bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 shadow-lg flex flex-wrap justify-between items-center gap-2 mb-2.5 shrink-0">
+                <div class="flex items-center gap-1.5">
+                    <button id="btnModeTactical" onclick="setMapMode('tactical')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-orange-600 text-white shadow">
+                        <i class="fa-solid fa-crosshairs"></i> 戰術相對座標 (0,0)
+                    </button>
+                    <button id="btnModeWorld" onclick="setMapMode('world')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-800 text-slate-300 hover:bg-slate-700">
+                        <i class="fa-solid fa-map"></i> 新月島戰略輿圖
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2 text-xs font-mono-code">
+                    <span class="bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-orange-300">
+                        原點: <strong class="text-white">伊格尼斯 (0, 0)</strong>
+                    </span>
+                    <span id="facingIndicator" class="bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-sky-300 hidden sm:inline-block">
+                        面向: 南方 (-Y)
+                    </span>
+                </div>
+            </div>
+
+            <!-- Interactive 2D Canvas Container (Expanded to 64dvh on mobile, flex-1 on desktop) -->
+            <div id="mobileMapCanvasCard" class="w-full flex-1 min-h-[260px] bg-slate-900/60 p-2 rounded-2xl border border-slate-800/90 shadow-2xl flex flex-col relative overflow-hidden">
+                <div class="relative flex-1 w-full h-full min-h-[220px]">
+                    <canvas id="mapCanvas"></canvas>
+
+                    <!-- Floating Legend Overlay -->
+                    <div class="absolute top-2 left-2 bg-slate-950/85 backdrop-blur-md p-2 rounded-xl border border-slate-800 text-[10px] sm:text-[11px] space-y-0.5 pointer-events-none max-w-[210px] sm:max-w-[250px]">
+                        <div class="font-bold text-slate-200 flex items-center gap-1.5">
+                            <i class="fa-solid fa-compass text-orange-400"></i>
+                            <span id="mapOverlayTitle">破岩鎮：熔爐關口內部</span>
+                        </div>
+                        <p id="mapOverlayDesc" class="text-[10px] text-slate-400 leading-tight">
+                            可滾輪/按鈕縮放、單指拖曳平移。點擊目標檢視距離。
+                        </p>
+                    </div>
+
+                    <!-- Zoom & Reset Controls Overlay (Solves overlapping coordinates & desktop/mobile zoom) -->
+                    <div class="absolute top-2 right-2 flex flex-col gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-xl border border-slate-800 shadow-lg">
+                        <button onclick="zoomMap(1.25)" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-orange-600 text-slate-200 hover:text-white flex items-center justify-center text-xs transition" title="放大地圖">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i>
+                        </button>
+                        <button onclick="zoomMap(0.8)" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-orange-600 text-slate-200 hover:text-white flex items-center justify-center text-xs transition" title="縮小地圖">
+                            <i class="fa-solid fa-magnifying-glass-minus"></i>
+                        </button>
+                        <button onclick="resetMapView()" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 flex items-center justify-center text-[10px] font-mono-code font-bold transition" title="重置縮放與視角回原點">
+                            1:1
+                        </button>
+                    </div>
+
+                    <!-- Selected Entity Tooltip -->
+                    <div id="mapEntityTooltip" class="hidden absolute bottom-3 left-3 bg-slate-950/95 backdrop-blur-md p-2.5 rounded-xl border border-orange-500/50 text-xs max-w-xs shadow-xl">
+                        <!-- Injected on entity click -->
+                    </div>
+                </div>
+
+                <!-- Map Controls & Tactical Entity List -->
+                <div class="mt-2 pt-2 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-2 px-1 shrink-0">
+                    <!-- Entity Quick Chips -->
+                    <div id="tacticalEntitiesBar" class="flex-1 flex items-center gap-1.5 overflow-x-auto w-full py-1 text-[11px] font-mono-code">
+                        <!-- Injected via JS -->
+                    </div>
+
+                    <!-- Directional Pad (Shifts relative coordinates & advances time) -->
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="text-[11px] text-slate-400 hidden xl:inline">位移(5ft)：</span>
+                        <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                            <button onclick="shiftTacticalOrigin(-5, 0, '西 (-X)')" class="px-2 h-7 bg-slate-800 hover:bg-orange-600 rounded text-xs transition" title="向西移動 5 呎 (-X)"><i class="fa-solid fa-arrow-left"></i> 西</button>
+                            <button onclick="shiftTacticalOrigin(0, 5, '北 (+Y)')" class="px-2 h-7 bg-slate-800 hover:bg-orange-600 rounded text-xs transition" title="向北移動 5 呎 (+Y)"><i class="fa-solid fa-arrow-up"></i> 北</button>
+                            <button onclick="shiftTacticalOrigin(0, -5, '南 (-Y)')" class="px-2 h-7 bg-slate-800 hover:bg-orange-600 rounded text-xs transition" title="向南移動 5 呎 (-Y)"><i class="fa-solid fa-arrow-down"></i> 南</button>
+                            <button onclick="shiftTacticalOrigin(5, 0, '東 (+X)')" class="px-2 h-7 bg-slate-800 hover:bg-orange-600 rounded text-xs transition" title="向東移動 5 呎 (+X)">東 <i class="fa-solid fa-arrow-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Bar: Synchronized World Regions & Fronts Clock (Scroll down on mobile to view full expandable list) -->
+            <div class="w-full mt-3 mb-4 lg:mb-0 lg:mt-2.5 bg-slate-900/90 p-3 lg:p-2.5 rounded-xl border border-slate-800 shadow-lg shrink-0">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-2 lg:mb-1.5">
+                    <div class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-eye text-orange-400"></i> 新月島各區已知情報 & 局勢記憶 (伊格尼斯第一人稱視角)
+                    </div>
+                    <div class="hidden lg:flex items-center gap-3">
+                        <button onclick="openModal('codexModal')" class="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1">
+                            <i class="fa-solid fa-book-bookmark"></i> 動作與規則圖鑑
+                        </button>
+                        <button onclick="openModal('loreModal')" class="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                            <i class="fa-solid fa-database"></i> NotebookLM 知識庫來源
+                        </button>
+                    </div>
+                </div>
+                <div id="worldRegionsSyncBar" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+        </main>
+
+        <!-- ================= RIGHT COLUMN: YT-LIVE STYLE GM LOG & ACTION CONSOLE ================= -->
+        <aside id="tab-chat" class="mobile-panel active-mobile-tab w-full lg:w-[400px] xl:w-[450px] bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 z-20 shadow-2xl">
+            
+            <!-- Stream Header -->
+            <div class="px-3.5 py-2.5 bg-slate-950 border-b border-slate-800 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                    <span class="font-bold text-xs tracking-wider uppercase text-slate-200">GM 敘事直播室 & 命運判定</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="triggerQuickRecap()" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-700 transition" title="整理目前場況與座標">
+                        <i class="fa-solid fa-bolt text-amber-400 mr-1"></i>現況總結
+                    </button>
+                    <button onclick="clearChatConfirm()" class="text-[11px] text-slate-500 hover:text-slate-300 px-1" title="重設目前對話檢視">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Chat Messages Stream -->
+            <div id="chatHistory" class="flex-1 overflow-y-auto p-3.5 space-y-3.5 bg-slate-900/60">
+                <!-- Pre-loaded with Chapter 3 Magmin Forge Gate Recap -->
+            </div>
+
+            <!-- AI GM Thinking Indicator -->
+            <div id="typingIndicator" class="hidden px-4 py-2 text-xs text-orange-300 bg-slate-950/90 border-t border-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-fire fa-bounce text-orange-500"></i>
+                <span>GM 正在編織因果、計算 2d6 與座標變化...</span>
+            </div>
+
+            <!-- Suggested Tactical Options Bar (Dynamic Prompt Chips) -->
+            <div id="suggestedActionsBar" class="px-3 py-2 bg-slate-950/80 border-t border-slate-800/80 flex gap-1.5 overflow-x-auto shrink-0">
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Player Action & Move Input Console (Removed manual bonus input box as requested) -->
+            <div class="bg-slate-950 p-3 border-t border-slate-800 shrink-0 space-y-2">
+                
+                <!-- Move Selector (Full width, no manual +0 input beside it) -->
+                <div class="relative w-full">
+                    <select id="moveSelect" class="w-full bg-slate-900 border border-slate-700 text-xs text-slate-100 rounded-lg px-2.5 py-2 focus:border-orange-500 outline-none">
+                        <option value="auto" data-stat="AUTO">🔮 AI 自動判讀動作 (依你的敘述自動決定是否擲骰與屬性)</option>
+                        <option value="none" data-stat="NONE">💬 純敘述 / 角色扮演 / 詢問 GM (不擲骰)</option>
+                        <optgroup label="🔥 燔祭者專屬職業動作 (Lv.1-3)">
+                            <option value="burning_brand" data-stat="CON">🗡️ 召喚燃燒之劍 (Burning Brand) [+體質 +2]</option>
+                            <option value="hack_and_slash_int" data-stat="INT">⚔️ 聖火砍劈 (燃燒之劍近戰) [+智力 +2]</option>
+                            <option value="volley_int" data-stat="INT">☄️ 聖火投擲/火龍咆哮 (殺戮之火遠程) [+智力 +2]</option>
+                            <option value="zuko_style" data-stat="WIS">🔥 振火神通 (Zuko Style 控火) [+睿知 -1]</option>
+                            <option value="give_me_fuel" data-stat="NONE">👁️ 予我燃油，予我烈火 (凝視雙眼問慾望燃料 - 免擲骰)</option>
+                            <option value="hand_crafted" data-stat="INT">🔨 徒手鎔鑄 (Hand Crafted 鍛造金屬) [+智力 +2]</option>
+                            <option value="firebrand" data-stat="CHA">📣 煽動者 (Firebrand 植入想法) [+魅力 +1]</option>
+                        </optgroup>
+                        <optgroup label="🎲 地城世界基本與特殊動作">
+                            <option value="defy_danger_int" data-stat="INT">⚡ 面對危險 - 臨機應變 [+智力 +2]</option>
+                            <option value="defy_danger_con" data-stat="CON">🛡️ 面對危險 - 耐力忍受 [+體質 +2]</option>
+                            <option value="defy_danger_dex" data-stat="DEX">🏃 面對危險 - 迅速行動/閃避 [+敏捷 +0]</option>
+                            <option value="defy_danger_str" data-stat="STR">💪 面對危險 - 蠻力解決 [+力量 +0]</option>
+                            <option value="defy_danger_wis" data-stat="WIS">🧘 面對危險 - 堅毅精神 [+睿知 -1]</option>
+                            <option value="defy_danger_cha" data-stat="CHA">🎭 面對危險 - 魅力與社交 [+魅力 +1]</option>
+                            <option value="discern_realities" data-stat="WIS">🔍 審視現狀 (Discern Realities) [+睿知 -1]</option>
+                            <option value="spout_lore" data-stat="INT">📖 憶述見聞 (Spout Lore) [+智力 +2]</option>
+                            <option value="parley" data-stat="CHA">🤝 談判 (Parley 需有籌碼) [+魅力 +1]</option>
+                            <option value="defend" data-stat="CON">🛡️ 保衛 (Defend 輕盾護同伴+1甲) [+體質 +2]</option>
+                            <option value="make_camp" data-stat="NONE">⛺ 大火旁紮營 (人類燔祭者回滿HP)</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- Textarea + Submit Button -->
+                <div class="flex gap-2">
+                    <textarea id="actionInput" rows="2" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs sm:text-sm text-white focus:border-orange-500 outline-none resize-none leading-relaxed" placeholder="描述伊格尼斯的行動、台詞或戰術（Enter 發送，Shift+Enter 換行）..."></textarea>
+                    <button id="sendBtn" onclick="submitAction()" class="bg-gradient-to-br from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white px-4 rounded-xl font-bold shadow-lg transition flex flex-col items-center justify-center shrink-0 min-w-[68px]">
+                        <i class="fa-solid fa-dice-d20 text-lg mb-0.5"></i>
+                        <span class="text-[11px]">執行</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ================= MOBILE ONLY TAB 4: LORE & DATABASE PANEL (HIDDEN ON DESKTOP) ================= -->
+        <section id="tab-lore-mobile" class="mobile-panel lg:hidden w-full bg-slate-900 flex-col p-4 overflow-y-auto gap-4 z-10">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-base font-bold text-amber-400"><i class="fa-solid fa-book-atlas mr-2"></i>知識庫來源 & 規則圖鑑</h2>
+                    <button onclick="openModal('codexModal')" class="bg-sky-600/30 border border-sky-500/50 text-sky-200 px-2.5 py-1 rounded-lg text-xs font-bold">
+                        <i class="fa-solid fa-book-bookmark mr-1"></i>開啟圖鑑
+                    </button>
+                </div>
+                <p class="text-xs text-slate-400">可管理提供給 AI GM 的記憶來源，或點擊開啟完整《地城世界》職業動作圖鑑。</p>
+                <button onclick="openModal('loreModal')" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow">
+                    <i class="fa-solid fa-folder-plus mr-1"></i>管理 / 上傳知識庫來源檔案
+                </button>
+                <div id="mobileLoreContent" class="space-y-3 text-xs"></div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav class="lg:hidden bg-slate-950 border-t border-slate-800 grid grid-cols-4 py-1.5 px-2 shrink-0 z-30">
+        <button onclick="switchMobileTab('tab-chat', this)" class="mobile-nav-btn flex flex-col items-center justify-center py-1 text-orange-400">
+            <i class="fa-solid fa-comments text-base"></i>
+            <span class="text-[10px] mt-0.5 font-medium">跑團直播</span>
+        </button>
+        <button onclick="switchMobileTab('tab-map', this)" class="mobile-nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
+            <i class="fa-solid fa-location-crosshairs text-base"></i>
+            <span class="text-[10px] mt-0.5 font-medium">平面座標</span>
+        </button>
+        <button onclick="switchMobileTab('tab-character', this)" class="mobile-nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
+            <i class="fa-solid fa-shield-halved text-base"></i>
+            <span class="text-[10px] mt-0.5 font-medium">狀態/物品</span>
+        </button>
+        <button onclick="switchMobileTab('tab-lore-mobile', this)" class="mobile-nav-btn flex flex-col items-center justify-center py-1 text-slate-400">
+            <i class="fa-solid fa-book-open text-base"></i>
+            <span class="text-[10px] mt-0.5 font-medium">圖鑑/來源</span>
+        </button>
+    </nav>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- Modal 1: AI GM & API Settings (Supports Gemini 3.1 Pro, 3 Flash, 2.5 Pro, 2.5 Flash & Custom ID) -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 border border-slate-700 p-5 rounded-2xl w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-orange-400"></i> AI GM 引擎與模型設定
+                </h2>
+                <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="space-y-4 text-xs">
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-slate-300 leading-relaxed">
+                    <p class="font-bold text-amber-400 mb-1"><i class="fa-solid fa-shield-heart mr-1"></i>雙模態防失憶保護：</p>
+                    <p>1. <strong>內建本地規則引擎（免金鑰即可玩）</strong>：未填寫 API Key 時，系統會以內建《新月島：破岩鎮篇》第三章續寫引擎自動擲骰、結算傷害與更新座標。<br>
+                    2. <strong>Gemini 雲端完整 GM</strong>：輸入您的 API Key 後，可直接選用最新 <strong>Gemini 3.1 Pro</strong> 或 <strong>3.0 Flash</strong>，結合知識庫所有啟用來源即時生成長篇小說敘事！</p>
+                </div>
+
+                <div>
+                    <label class="block text-slate-300 font-bold mb-1">Google Gemini API Key</label>
+                    <input type="password" id="apiKeyInput" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:border-orange-500 outline-none font-mono-code" placeholder="AIzaSy...">
+                    <p class="text-[11px] text-slate-500 mt-1">金鑰僅儲存於您的瀏覽器 LocalStorage，直接向 Google 官方端點請求。</p>
+                </div>
+
+                <div>
+                    <label class="block text-slate-300 font-bold mb-1">選擇 Gemini 模型版本</label>
+                    <select id="modelSelect" onchange="toggleCustomModelInput()" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white outline-none">
+                        <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (🔥 3.1 Pro：最強邏輯推理與長篇小說文筆)</option>
+                        <option value="gemini-3-flash-preview">gemini-3-flash-preview (⚡ 3.0 Flash：新世代極速與高智慧平衡)</option>
+                        <option value="gemini-2.5-pro">gemini-2.5-pro (📘 2.5 Pro：深度推理與複雜規則判讀)</option>
+                        <option value="gemini-2.5-flash">gemini-2.5-flash (🚀 2.5 Flash：反應最快、免費額度最寬裕)</option>
+                        <option value="custom">✏️ 自訂模型代號 (手動輸入任意官方模型 ID)</option>
+                    </select>
+                </div>
+
+                <div id="customModelWrapper" class="hidden">
+                    <label class="block text-slate-300 font-bold mb-1">自訂模型 ID (Model String)</label>
+                    <input type="text" id="customModelInput" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-amber-300 font-mono-code outline-none" placeholder="例如：gemini-3.1-pro-preview">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-6">
+                <button onclick="closeModal('settingsModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-300">關閉</button>
+                <button onclick="saveSettings()" class="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 rounded-lg text-xs text-white font-bold shadow">儲存設定</button>
+            </div>
+    <!-- Modal 2: Categorized Inventory, Load Reference & Lore Viewer (Full-height unified scrolling on mobile) -->
+    <div id="inventoryModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-2 sm:p-4">
+        <div class="bg-slate-900 border border-slate-700 p-3.5 sm:p-5 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col h-[92dvh] max-h-[92dvh] sm:h-auto sm:max-h-[88vh]">
+            <div class="flex justify-between items-center mb-2.5 shrink-0">
+                <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-sack-dollar text-amber-400"></i> 物品欄、傳奇聖物與資產檢視
+                </h2>
+                <button onclick="closeModal('inventoryModal')" class="text-slate-400 hover:text-white px-2 py-1"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+
+            <!-- Unified Scrollable Body so Mobile has full-screen room to scroll through items and lore -->
+            <div class="flex-1 overflow-y-auto pr-1 space-y-3 min-h-0">
+                <!-- Compact Load, Gold & Estate Summary -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-xs">
+                    <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">總重 / 上限</span>
+                        <div id="modalLoadDisplay" class="text-sm sm:text-base font-mono-code font-bold text-emerald-400 mt-0.5">8 / 9 重量</div>
+                        <span class="text-[10px] text-slate-500">基礎9+STR(0)</span>
+                    </div>
+                    <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">隨身金幣 (100G=1w)</span>
+                        <div id="modalGoldDisplay" class="text-sm sm:text-base font-mono-code font-bold text-amber-400 mt-0.5">300 G <span class="text-[10px] text-slate-400 font-normal">(3w)</span></div>
+                        <span class="text-[10px] text-slate-500">劇情交易更新</span>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1 bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">領地不動產與中央債權</span>
+                        <p class="text-[11px] text-emerald-400 mt-0.5 font-medium leading-snug">🏡 石心鎮郊莊園 (煉金/鍛造) · 📜 塔拉莫斯港 1,400 G 債權</p>
+                    </div>
+                </div>
+
+                <!-- Sticky Search & Category Filter Bar -->
+                <div class="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-md py-1.5 space-y-2 border-b border-slate-800/80">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+                        <input type="text" id="modalItemSearch" oninput="renderInventoryLists()" class="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 rounded-xl pl-8 pr-3 py-2 text-xs text-white outline-none" placeholder="輸入關鍵字搜尋物品名稱、標籤或第 1~3 章典故...">
+                    </div>
+                    <div class="flex gap-1 overflow-x-auto text-[11px] pb-0.5">
+                        <button onclick="setInvCategoryFilter('ALL')" id="invCat_ALL" class="inv-cat-btn shrink-0 px-2.5 py-1.5 rounded-lg bg-orange-600 text-white font-bold">全部</button>
+                        <button onclick="setInvCategoryFilter('傳奇聖物與核心')" id="invCat_傳奇聖物與核心" class="inv-cat-btn shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">🔥 聖物核心</button>
+                        <button onclick="setInvCategoryFilter('武裝與防具')" id="invCat_武裝與防具" class="inv-cat-btn shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">🛡️ 武裝防具</button>
+                        <button onclick="setInvCategoryFilter('煉金藥劑與補給')" id="invCat_煉金藥劑與補給" class="inv-cat-btn shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">🧪 藥劑補給</button>
+                        <button onclick="setInvCategoryFilter('關鍵信物與工具')" id="invCat_關鍵信物與工具" class="inv-cat-btn shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">🗝️ 信物工具</button>
+                    </div>
+                </div>
+
+                <!-- Selected Item Detailed Lore Box -->
+                <div id="itemDetailLoreBox" class="hidden bg-gradient-to-r from-orange-950/60 via-slate-950 to-purple-950/50 border border-orange-500/50 rounded-xl p-3 text-xs">
+                    <!-- Populated when an item is clicked -->
+                </div>
+
+                <!-- Categorized List -->
+                <div id="manageInventoryList" class="space-y-3 text-xs pb-2">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center mt-2.5 pt-2.5 border-t border-slate-800 text-[11px] text-slate-400 shrink-0">
+                <span class="truncate mr-2">💡 點擊物品可檢視第 1～3 章完整由來</span>
+                <button onclick="closeModal('inventoryModal')" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-white font-bold shrink-0">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 4: NotebookLM-Style Anti-Amnesia Source Grounding Library (防失憶來源知識庫) -->
+    <div id="loreModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-slate-900 border border-slate-700 p-5 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+                <div>
+                    <h2 class="text-base font-bold text-indigo-300 flex items-center gap-2">
+                        <i class="fa-solid fa-database text-indigo-400"></i> NotebookLM 風格防失憶知識庫 (支援百萬字長文本 & 無數量上限)
+                    </h2>
+                    <p class="text-[11px] text-slate-400 mt-0.5">勾選的「來源 (Sources)」會在每次行動時自動注入 AI GM 記憶中。已解除字數限制並啟用 IndexedDB 大容量資料庫，且自動回合存檔會合併寫入單一滾動來源，絕不會塞爆來源清單。</p>
+                </div>
+                <button onclick="closeModal('loreModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <!-- Top Controls: Auto-Save Turn Toggle, Manual Save Session, Upload File, Add Note -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+                <label class="flex items-center gap-2 cursor-pointer text-slate-200 font-medium">
+                    <input type="checkbox" id="autoSaveTurnSourceToggle" checked onchange="toggleAutoSaveTurnSource(this.checked)" class="accent-orange-500 w-4 h-4 rounded">
+                    <span>⚡ 結束一次對話時，自動把 GM 的輸出追加寫入「即時對話記憶來源」（單一來源自動累積，不佔來源數量）</span>
+                </label>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="saveCurrentChatAsSource()" class="bg-orange-600/80 hover:bg-orange-500 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition">
+                        <i class="fa-solid fa-thumbtack"></i> 將目前對話封存為新來源
+                    </button>
+                    <label class="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition">
+                        <i class="fa-solid fa-file-arrow-up"></i> 上傳長篇檔案 (.txt/.md/.docx/.json 無字數限制)
+                        <input type="file" accept=".txt,.md,.json,.csv,.html,.docx" multiple class="hidden" onchange="handleUploadSourceFiles(event)">
+                    </label>
+                    <button onclick="toggleNewSourceEditor()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg text-[11px] border border-slate-700 transition">
+                        <i class="fa-solid fa-plus"></i> 手動新增文字來源
+                    </button>
+                </div>
+            </div>
+
+            <!-- Collapsible Manual Source Editor -->
+            <div id="newSourceEditorBox" class="hidden mb-3 bg-slate-950 p-3 rounded-xl border border-indigo-500/40 space-y-2 text-xs">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-indigo-300">➕ 新增自訂知識來源給 GM 參考</span>
+                    <button onclick="toggleNewSourceEditor()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <input id="newSourceTitle" type="text" placeholder="來源標題 (例如：破岩鎮補充設定 / 父親的背景筆記)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white outline-none">
+                <textarea id="newSourceContent" rows="3" placeholder="貼上你想讓 GM 記住的設定、規則或劇情文本..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white outline-none resize-none"></textarea>
+                <div class="flex justify-end">
+                    <button onclick="addCustomTextSource()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded-lg font-bold">加入知識庫來源</button>
+                </div>
+            </div>
+
+            <!-- Two-Column NotebookLM View: Left = Source Cards List, Right = Source Content Reader -->
+            <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 overflow-hidden min-h-[320px]">
+                <div class="lg:col-span-5 flex flex-col bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                    <div class="px-3 py-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-xs">
+                        <span class="font-bold text-slate-300">📚 來源清單 (勾選即提供給 GM)</span>
+                        <span id="sourcesCountText" class="text-[11px] text-indigo-400 font-mono-code">5 個來源啟用中</span>
+                    </div>
+                    <div id="sourcesListContainer" class="flex-1 overflow-y-auto p-2 space-y-1.5 text-xs">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+
+                <div class="lg:col-span-7 flex flex-col bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                    <div class="px-3 py-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-xs">
+                        <span id="sourceReaderTitle" class="font-bold text-amber-400 truncate">請點擊左側來源檢視詳細內容</span>
+                        <span id="sourceReaderMeta" class="text-[10px] text-slate-400 font-mono-code shrink-0"></span>
+                    </div>
+                    <div id="sourceReaderBody" class="flex-1 overflow-y-auto p-3.5 text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-mono-code select-text">
+                        <!-- Injected via JS -->
+    <!-- Modal 6: Story Archive, Cross-Device Cloud Sync & Save/Load Export -->
+    <div id="archiveModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-50 p-2 sm:p-4">
+        <div class="bg-slate-900 border border-slate-700 p-4 sm:p-5 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92dvh]">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800 shrink-0">
+                <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-up text-amber-400"></i> 跨裝置雲端同步 & 傳奇存檔備份
+                </h2>
+                <button onclick="closeModal('archiveModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-3 pr-1 min-h-0">
+                <!-- Method 1: Cloud Folder File Sync (iCloud / Google Drive / OneDrive) -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-2">
+                    <div class="font-bold text-amber-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-folder-open text-orange-400"></i> 方式一：雲端硬碟資料夾存取 (Google Drive / iCloud / OneDrive)
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        將存檔匯出至手機與電腦共用的<strong>雲端硬碟資料夾</strong>，換裝置時直接從該雲端資料夾選取載入，即可 100% 同步所有對話紀錄、知識庫來源與座標狀態：
+                    </p>
+                    <div class="flex flex-wrap gap-2 pt-1">
+                        <button onclick="exportGameStateJSON()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow">
+                            <i class="fa-solid fa-download"></i> 匯出存檔至雲端資料夾 (.json)
+                        </button>
+                        <label class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition shadow">
+                            <i class="fa-solid fa-upload"></i> 從雲端資料夾載入存檔 (.json)
+                            <input type="file" accept=".json" class="hidden" onchange="importGameStateJSON(event)">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Method 2: Direct 1-Click GitHub Gist Cloud Sync -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-indigo-500/40 text-xs space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-indigo-300 flex items-center gap-1.5">
+                            <i class="fa-brands fa-github text-white"></i> 方式二：GitHub 雲端一鍵同步 (免傳檔案，手機⇄電腦秒同步)
+                        </span>
+                        <span id="gistSyncStatus" class="text-[10px] font-mono-code text-slate-400">尚未綁定</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        填入您的 GitHub Personal Access Token (勾選 <code>gist</code> 權限)，即可在電腦按「上傳雲端」、手機按「從雲端拉取」直接同步！
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input type="password" id="githubTokenInput" placeholder="GitHub Token (ghp_...)" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono-code text-[11px] outline-none focus:border-indigo-500">
+                        <input type="text" id="githubGistIdInput" placeholder="雲端存檔 ID (首次上傳自動產生)" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-amber-300 font-mono-code text-[11px] outline-none focus:border-indigo-500">
+                    </div>
+                    <div class="flex flex-wrap gap-2 pt-1">
+                        <button onclick="cloudPushToGist()" class="bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> 上傳目前進度至雲端
+                        </button>
+                        <button onclick="cloudPullFromGist()" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow">
+                            <i class="fa-solid fa-cloud-arrow-down"></i> 從雲端拉取最新進度
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Novel Transcript & Reset -->
+                <div class="space-y-2">
+                    <div class="flex flex-wrap justify-between items-center gap-2">
+                        <button onclick="copyStoryTranscript()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition">
+                            <i class="fa-solid fa-copy text-orange-400"></i> 複製完整小說體冒險紀錄
+                        </button>
+                        <button onclick="resetToChapter3Default()" class="bg-red-950/60 hover:bg-red-900 text-red-300 px-3 py-1.5 rounded-lg text-xs border border-red-800/50 transition">
+                            重置回第 3 章熔爐關口
+                        </button>
+                    </div>
+                    <textarea id="storyTranscriptBox" readonly class="w-full h-48 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 font-mono-code leading-relaxed outline-none resize-none"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert / Notification Modal -->
+    <div id="alertModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden items-center justify-center z-[60] p-4">
+        <div class="bg-slate-900 border border-orange-500/50 p-5 rounded-2xl w-full max-w-sm shadow-2xl text-center">
+            <div class="w-12 h-12 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center mx-auto mb-3 text-2xl">
+                <i class="fa-solid fa-fire-flame-curved"></i>
+            </div>
+            <div id="alertMessage" class="text-slate-200 text-xs sm:text-sm mb-5 leading-relaxed">提示訊息</div>
+            <button onclick="closeModal('alertModal')" class="px-6 py-2 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 rounded-xl text-white text-xs font-bold w-full shadow">確認</button>
+        </div>
+    </div>
+
+    <!-- ================= CORE APPLICATION SCRIPT ================= -->
+    <script>
+        // =========================================================================
+        // 0. RULEBOOK CODEX DATABASE (《地城世界》官方規則與燔祭者全動作圖鑑)
+        // =========================================================================
+        const DW_CODEX_DATA = [
+            // --- 燔祭者起始與種族動作 ---
+            {
+                title: "燃燒之劍 (Burning Brand)",
+                category: "燔祭者動作",
+                level: "Lv.1 起始動作 (已習得)",
+                stat: "+體質 (CON)",
+                trigger: "當你召喚出一把由純粹火焰構成的武器時",
+                detail: "擲+體質。✴10+：從標籤中選擇二項；✴7-9：選擇一項。你在使用這把武器攻擊時，可用【智力】取代力量或敏捷。起始帶有［烈焰］、［接觸］、［危險］和［3使用次數］標籤。每次攻擊消耗1次使用次數。\n• 基礎可選標籤：觸及(及遠)、投擲(短程)、+1傷害、移除［危險］標籤。"
+            },
+            {
+                title: "殺戮之火 (This Killing Fire)",
+                category: "燔祭者動作",
+                level: "Lv.2 進階動作 (已習得)",
+                stat: "被動強化",
+                trigger: "當你召喚燃燒之劍選擇標籤時",
+                detail: "將下列標籤添加到你【燃燒之劍】動作的可選清單中：［毀亂 (Messy)］、［強力 (Forceful)］、［及遠 (Reach)］、［短程 (Near)］、［遠程 (Far)］。"
+            },
+            {
+                title: "以火攻火 (Fighting Fire With Fire)",
+                category: "燔祭者動作",
+                level: "Lv.1 起始動作 (已習得)",
+                stat: "擲 1d4",
+                trigger: "當你受到傷害，且該傷害為奇數（扣除護甲值後）時",
+                detail: "你體內的烈焰將湧現並助你一臂之力。擲 1d4，可選擇：(1) 加到燃燒之劍的使用次數上（若有）；(2) 下次召喚燃燒之劍時獲得等量加值；或 (3) 減少等同該數值的傷害。"
+            },
+            {
+                title: "予我燃油，予我烈火 (Give Me Fuel, Give Me Fire)",
+                category: "燔祭者動作",
+                level: "Lv.1 起始動作 (已習得)",
+                stat: "免擲骰",
+                trigger: "當你緊緊凝視著某人的雙眼時",
+                detail: "你可以向他詢問：「什麼是你慾望之炎的燃料？」他們將會據實回答事實，就算該角色不知道或打算將其隱藏起來也一樣。"
+            },
+            {
+                title: "振火神通 (Zuko Style)",
+                category: "燔祭者動作",
+                level: "Lv.1 起始動作 (已習得)",
+                stat: "+睿知 (WIS)",
+                trigger: "當你讓烈焰屈服於你的意志時",
+                detail: "擲+睿知。✴10+：只要仍有足夠的燃料讓火焰燃燒，它就會照你的命令行事，按你所想的變化外型和移動。✴7-9：這個效果相當短暫，只會持續片刻。"
+            },
+            {
+                title: "徒手鎔鑄 (Hand Crafted)",
+                category: "燔祭者動作",
+                level: "Lv.1 起始動作 (已習得)",
+                stat: "特殊 / 面對危險(+INT)",
+                trigger: "當你使用雙手取代工具和火焰來鍛造或毀壞金屬物品時",
+                detail: "所有平凡的武器、防具和金屬首飾都能從原料鍛造而成，或將其毀壞還原。但若沒有足夠時間或不在安全場所，需先進行【面對危險】動作（通常擲+智力）。"
+            },
+            {
+                title: "人類種族動作：大火紮營",
+                category: "燔祭者動作",
+                level: "種族起始動作 (已習得)",
+                stat: "紮營強化",
+                trigger: "當你在一團巨大無遮蓋的火焰旁進行紮營動作時",
+                detail: "恢復你全部的生命值（而非一般紮營的一半最大生命值）。"
+            },
+            {
+                title: "煽動者 (Firebrand)",
+                category: "燔祭者動作",
+                level: "Lv.3 進階動作 (已習得)",
+                stat: "+魅力 (CHA)",
+                trigger: "當你對一個 NPC 說明一個嶄新的想法時",
+                detail: "擲+魅力。✴10+：他將相信這是他自己的想法，並對它充滿熱情。✴7-9：他的激情只會持續一到二天。✴6-：他將表現出消極的反應，並公然反對這個想法。"
+            },
+            // --- 燔祭者未解鎖進階動作 (供未來升級查詢) ---
+            {
+                title: "烈焰傳說 (Lore of Flame)",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "+睿知 (WIS)",
+                trigger: "當你凝視著火源追尋解答時",
+                detail: "擲+睿知。✴10+：GM會詳細告訴你與當下情境有關的有趣新情報細節。✴7-9：GM只會告訴你大致的印象。"
+            },
+            {
+                title: "熾焰加倍燦爛 & 灼燃半減長息",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "命運操控",
+                trigger: "當你引導命運之火改判擲骰結果時",
+                detail: "可將一次 6- 視作 7-9，或將 7-9 視作 10+。告訴GM你將因此失去什麼（一種情感、一段記憶或天生事物）。在執行「灼燃半減長息（將一次10+視作失敗）」前不可再次使用。"
+            },
+            {
+                title: "啟燃者 (The Enkindler)",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "+魅力 (CHA)",
+                trigger: "當你鼓舞激起他人心中的勇氣時",
+                detail: "擲+魅力。✴10+：他們擺脫心中所有恐懼和疑慮，瞬間變得英勇無比。✴7-9：效果轉瞬即逝，一兩分鐘後退縮。✴6-：他們因你的存在而感到威脅或懼怕。"
+            },
+            {
+                title: "飛蛾撲火 (Moth to the Flame)",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "+睿知 (WIS)",
+                trigger: "當你利用心中的火焰誘惑軟弱的心靈時",
+                detail: "擲+睿知。✴10+：其自我意志被抑制，只要不受驚嚇就會持續跟隨並照你的希望去做。✴7-9：只夠讓他們分神或迷惑。"
+            },
+            {
+                title: "奧古·桀哈 (Ogdru Jahad)",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "儀式",
+                trigger: "當你在能量匯聚之地舉行火焰儀式時",
+                detail: "獲得法師的【儀式】動作。GM永遠會告知你需要犧牲什麼東西才能獲得你想要的效果。"
+            },
+            {
+                title: "炎上嘲弄 (Sick Burn)",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "+魅力 (CHA)",
+                trigger: "當你侮辱一名 NPC 時",
+                detail: "擲+魅力。✴10+：完全沒給對方反應空間，承受侮辱與聽眾嘲笑。✴7-9：你越過了界限，對方總有一天會報復。✴6-：當場發飆。"
+            },
+            {
+                title: "自斷後路 (Burning Bridges)",
+                category: "燔祭者動作",
+                level: "Lv.2-5 進階動作 (未學習)",
+                stat: "消除羈絆復活",
+                trigger: "當你將要進行臨死一息時",
+                detail: "可改為永久消除其中一個羈絆（並永久減少羈絆上限），直接活過來並恢復 1d6 生命值。"
+            },
+            {
+                title: "源自地獄之心 (From Hell's Heart)",
+                category: "燔祭者動作",
+                level: "Lv.6-10 大師動作 (未學習)",
+                stat: "黑火強化",
+                trigger: "每當你召喚火焰時",
+                detail: "可用來自地獄本身的黑色火焰代替。它不釋放熱量，帶有［無視護甲］標籤，直接灼燒靈魂本身（無靈魂生物不受傷）。"
+            },
+            {
+                title: "搧風點火 (Fanning the Flames)",
+                category: "燔祭者動作",
+                level: "Lv.6-10 大師動作 (需：煽動者)",
+                stat: "+魅力 (CHA)",
+                trigger: "當你對一群人施展煽動者時",
+                detail: "你可以將【煽動者】動作的效果同時運用在一群人（十數人左右）身上。"
+            },
+            {
+                title: "看這世界陷入火海 (Watch the World Burn)",
+                category: "燔祭者動作",
+                level: "Lv.6-10 大師動作 (未學習)",
+                stat: "+睿知 (WIS)",
+                trigger: "當你開啟燃燒位面通道喚出烈焰風暴時",
+                detail: "告知GM你犧牲什麼並擲+睿知。在小村莊範圍內降下火雨。✴10+：可隨意熄滅；✴7-9：失控蔓延；✴6-：殘虐飢餓的存在從風暴中降臨。"
+            },
+            // --- 地城世界基本動作 ---
+            {
+                title: "砍劈 (Hack and Slash)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "+力量 (燃燒之劍改用 +智力)",
+                trigger: "當你以近戰肉搏攻擊有所準備的敵人時",
+                detail: "✴10+：對敵人造成傷害並避開其攻擊；或選擇額外造成 +1d6 傷害但暴露在敵人反擊下。✴7-9：你對敵人造成傷害，但敵人的攻擊也擊中了你。（註：攻擊毫無防備的敵人直接造成傷害，不需擲砍劈）。"
+            },
+            {
+                title: "射擊 (Volley)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "+敏捷 (燃燒之劍改用 +智力)",
+                trigger: "當你瞄準並射擊或投擲遠方的敵人時",
+                detail: "✴10+：成功命中並造成傷害。✴7-9：造成傷害，但須三選一：(1) 移動位置使自己置身危險；(2) 妥協：傷害 -1d6；(3) 減少 1 發彈藥（投擲武器不可選此項）。"
+            },
+            {
+                title: "面對危險 (Defy Danger)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "依應對方式決定屬性",
+                trigger: "當你在迫在眉睫的威脅下行動或即將遭受災難性後果時",
+                detail: "• 蠻力解決：+力量 | • 迅速閃避：+敏捷 | • 耐力忍受：+體質\n• 臨機應變：+智力 | • 堅毅精神：+睿知 | • 社交魅力：+魅力\n✴10+：達成行動且威脅不應驗。✴7-9：躊躇或退縮，GM給予更糟後果、妥協或艱難抉擇。"
+            },
+            {
+                title: "審視現狀 (Discern Realities)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "+睿知 (WIS)",
+                trigger: "當你仔細地研究一個情景或人物時",
+                detail: "✴10+：從下列清單選 3 個問題詢問 GM；✴7-9：選 1 個問題。依據答案行動時獲得下次+1：\n1. 這裡最近發生了什麼事？\n2. 這裡有什麼即將發生？\n3. 我應該要注意些什麼？\n4. 這裡有什麼是對我有價值或派得上用場的？\n5. 誰才是掌控這裡的人？\n6. 這裡有什麼與其表面所見不同？"
+            },
+            {
+                title: "憶述見聞 (Spout Lore)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "+智力 (INT)",
+                trigger: "當你回憶自己積累下來關於某事物的知識時",
+                detail: "✴10+：GM告訴你一件有趣且有用的情報。✴7-9：GM只會告訴你一件有趣的情報，你必須自己設法讓它派上用場。"
+            },
+            {
+                title: "談判 (Parley)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "+魅力 (CHA)",
+                trigger: "當你擁有籌碼 (Leverage) 並打算操弄 NPC 時",
+                detail: "籌碼必須是對方需要或畏懼的事物。✴10+：若你先做出承諾，他們將依你所言行事。✴7-9：他們要求你現在立刻給出具體保證。"
+            },
+            {
+                title: "保衛 (Defend)",
+                category: "基本動作",
+                level: "基本動作",
+                stat: "+體質 (CON)",
+                trigger: "當你挺身保護一個遭受攻擊的人、物品或地點時",
+                detail: "✴10+：獲得 3 掌握；✴7-9：獲得 1 掌握。當保衛對象受攻擊時，每消耗 1 掌握可選：(1) 將攻擊導向自己；(2) 攻擊效果或傷害減半；(3) 使攻擊者露出破綻讓同伴下次+1；(4) 對攻擊者造成等同你等級的傷害。（聖火輕盾額外為受保衛同伴提供 +1 護甲）。"
+            },
+            // --- 特殊與聚落動作 ---
+            {
+                title: "踏上危險旅途 (Undertake a Perilous Journey)",
+                category: "特殊與聚落動作",
+                level: "特殊旅途動作",
+                stat: "各職責擲 +睿知",
+                trigger: "當隊伍旅經危險地域且明確知道目的地時",
+                detail: "指派【領路人】（10+縮短時間）、【斥候】（10+先發制人）、【軍需官】（10+每人少消耗1口糧）。7-9則正常消耗口糧、時間如預期且不搶佔優勢。"
+            },
+            {
+                title: "負重 (Encumbrance)",
+                category: "特殊與聚落動作",
+                level: "特殊規則",
+                stat: "負載上限 9+STR",
+                trigger: "當你攜帶物品進行動作時",
+                detail: "• 低於或等於負載上限（9）：無減值。\n• 等於上限+1或+2（10~11）：所有擲骰獲得持續 -1。\n• 超過上限+2（12+）：必須捨棄至少1重量物品並承受-1，否則擲骰自動失敗。"
+            },
+            {
+                title: "聚會結束 (End of Session) & 升級公式",
+                category: "特殊與聚落動作",
+                level: "特殊結算動作",
+                stat: "經驗值結算",
+                trigger: "當一次冒險段落告一段落或紮營休整時",
+                detail: "• 滿足陣營描述 (+1 XP)\n• 解決舊羈絆 (+1 XP)\n• 三問（認識世界、戰勝強敵、收穫財寶，每項『是』+1 XP）\n• 升級門檻：【當前等級 + 7】點 XP（Lv.3 升 Lv.4 需 10 XP）。"
+            },
+            // --- 夥伴與怪物圖鑑 ---
+            {
+                title: "火矮人 (Magmin) — 下界深淵成群部族",
+                category: "夥伴與怪物圖鑑",
+                level: "破岩鎮主要敵軍",
+                stat: "HP 7 | 護甲 4 | 燃燒錘 d6+2",
+                trigger: "標籤：成群、聰穎、組織、囤財者、近身、及遠",
+                detail: "• 特性【燃焰鮮血 (Flaming Blood)】：受傷時噴濺出的不是血而是熔岩，會灼傷近身攻擊者。\n• 弱點：其黑曜岩重甲（4護甲）極懼怕『餘燼之心/凍結之心』帶來的極寒熱脹冷縮應力崩解；且極度崇拜高等『徒手鎔鑄』工藝。"
+            },
+            {
+                title: "米拉 (Mila) & 塞拉斯 (Silas) — 同行僱工技能",
+                category: "夥伴與怪物圖鑑",
+                level: "同行夥伴機制",
+                stat: "米拉(戰士Lv.3) / 塞拉斯(追跡者Lv.4)",
+                trigger: "當同伴協同作戰或領路偵查時",
+                detail: "• 米拉【全副武裝】：援助你造成傷害時，將她的技能階級（+3）加入你造成的傷害中；若攻擊導致反擊，她也會首當其衝分擔。\n• 塞拉斯【領路與偵察】：旅行距離低於 4 口糧時領路自動成功；並能預判陷阱與提供先發制人(+1)優勢。"
+            }
+        ];
+
+        // =========================================================================
+        // 1. CANONICAL GAME STATE (精確承接第 3 章：破岩鎮熔爐關口火矮人進度)
+        // =========================================================================
+        const DEFAULT_GAME_STATE = {
+            character: {
+                name: "伊格尼斯 (Ignis)",
+                class: "燔祭者 (Immolator)",
+                race: "人類 (在大火旁紮營恢復全HP)",
+                alignment: "中立 / 邪惡 (以無償犧牲換取服務 / 將非自願犧牲者獻祭給火焰)",
+                level: 3,
+                hp: 17,
+                maxHp: 20, // 基礎 4 + 體質 16
+                xp: 5,     // Lv3 升 Lv4 需 3+7 = 10 XP
+                armor: 1,  // 聖火輕盾 +1 護甲
+                damageDie: "d8",
+                gold: 300,
+                estates: "石心鎮郊莊園 (含獨立煉金室與鍛造爐)、中央政府 1,400 G 債權證明",
+                burningBrand: {
+                    uses: 3,
+                    maxUses: 3,
+                    activeTags: ["烈焰", "接觸", "及遠 (Reach)"],
+                    unlockedKillFireTags: ["毀亂 (Messy)", "強力 (Forceful)", "及遠 (Reach)", "短程 (Near)", "遠程 (Far)"]
+                },
+                fightingFireBonus: 0, // 由GM與奇數傷害自動觸發之加值
+                stats: {
+                    STR: {
+                        name: "力量", val: 9, mod: 0, debility: false, debName: "虛弱",
+                        reason: "【初始分配 9 (調整值 +0)】依《地城世界》屬性換算表，數值 9~12 對應調整值為 0。決定你的基礎負載上限（9 + 0 = 9 重量）與一般蠻力檢定；使用燃燒之劍時可改用智力(+2)取代力量。"
+                    },
+                    DEX: {
+                        name: "敏捷", val: 12, mod: 0, debility: false, debName: "顫抖",
+                        reason: "【初始分配 12 (調整值 +0)】數值 9~12 對應調整值為 0。影響你的迅速閃避【面對危險 (+DEX)】與一般投射動作；第三章在巨石柱碎石雨中曾憑藉敏捷閃避成功奪取核心。"
+                    },
+                    CON: {
+                        name: "體質", val: 16, mod: 2, debility: false, debName: "患病",
+                        reason: "【初始分配 15 (+1) ➔ 第一章末升 Lv.2 提升 +1 至 16 (調整值 +2)】數值 16~17 對應調整值為 +2！使你的最大生命值由 19 提升至 20（基礎 4 + 體質 16），並讓【召喚燃燒之劍 (+CON)】與【保衛 (+CON)】檢定穩定獲得 +2 加值。"
+                    },
+                    INT: {
+                        name: "智力", val: 16, mod: 2, debility: false, debName: "暈眩",
+                        reason: "【初始最高天賦分配 16 (調整值 +2)】數值 16~17 對應調整值為 +2！體法雙修的核心屬性：用於導引【燃燒之劍砍劈/射擊 (+INT)】、【徒手鎔鑄 (+INT)】、【面對危險：臨機應變 (+INT)】與【憶述見聞 (+INT)】。"
+                    },
+                    WIS: {
+                        name: "睿知", val: 8, mod: -1, debility: false, debName: "困惑",
+                        reason: "【初始分配 8 (調整值 -1)】數值 6~8 對應調整值為 -1。由於體內聖火的轟鳴時常掩蓋外在細微預兆，在進行【審視現狀 (+WIS)】、【振火神通 (+WIS)】與【旅途職責 (+WIS)】時承受 -1 調整值（但也因此常在 6- 失敗時為你賺取寶貴的 XP）。"
+                    },
+                    CHA: {
+                        name: "魅力", val: 13, mod: 1, debility: false, debName: "疤痕",
+                        reason: "【初始分配 13 (調整值 +1)】數值 13~15 對應調整值為 +1。父母自小教導的人際應對與火神代行者的威嚴，用於【談判 (+CHA)】、【招募】與 Lv.3 進階動作【煽動者 (Firebrand, +CHA)】。"
+                    }
+                },
+                moves: [
+                    "燃燒之劍 (+體質)：起始3次使用，可用智力進行砍劈/射擊",
+                    "殺戮之火 (Lv2)：燃燒之劍可選 [毀亂][強力][及遠][短程][遠程]",
+                    "以火攻火：受奇數傷害(扣護甲後)擲1d4，加次數/下次召喚加值/減傷",
+                    "振火神通 (+睿知)：操控烈焰外型與移動",
+                    "予我燃油，予我烈火：凝視雙眼詢問「什麼是你慾望之炎的燃料？」(免擲骰)",
+                    "徒手鎔鑄：雙手代替工具與火爐鍛造或毀壞金屬",
+                    "煽動者 (Lv3, +魅力)：向NPC植入嶄新想法使其堅信是自己所想"
+                ],
+                bonds: [
+                    "約瑟夫曾感受過地獄烈火，現在他的生命之火活在我的黑曜石戒中。",
+                    "我心中深深掛念著石心鎮莊園的母親希拉，以及下落不明、曾受雇於琳薩工頭的父親。"
+                ],
+                inventory: [
+                    {
+                        name: "不滅的黑曜石戒",
+                        category: "傳奇聖物與核心",
+                        tags: "象徵物, 血脈結合, 0重量",
+                        weight: 0,
+                        usable: false,
+                        lore: "【第一章典故】晚春異常大雪掩埋石心鎮之夜，你從面如死灰的母親希拉左手中指強行取下並戴上的火神遴選者信物，裡面燃燒著自願獻身火海以換取父母康復的摯友樵夫『約瑟夫』的生命之火。第一章結尾你咬破左手中指以熱血灌注後，戒指已與你的血管深度融合，是施展【燃燒之劍】與【殺戮之火】的核心媒介。"
+                    },
+                    {
+                        name: "餘燼之心 (黃銅鉛襯筒裝)",
+                        category: "傳奇聖物與核心",
+                        tags: "穩定熱源, 封印凋零能量, 1重量",
+                        weight: 1,
+                        usable: false,
+                        lore: "【第一、二章典故】原為冰晶巨獸與巨石柱共鳴的『凍結之心（凋零之胃）』核心殘渣。第一章末巨石柱崩塌時，你冒死衝入廢墟並以自身鮮血與聖火鎖鏈強行壓制其邪崇，將其馴服為穩定搏動的『餘燼之心』；第二章官邸斬首戰中更吸納了失控的凋零光球能量。目前裝載於韋斯利提供的鍍鉛黃銅圓筒中，既能釋放極寒熱應力粉碎火矮人重甲，也能作為高等鍛造的能量源。"
+                    },
+                    {
+                        name: "龍血黑曜石原礦",
+                        category: "傳奇聖物與核心",
+                        tags: "傳奇鍛造材料, 待鎔鑄, 1重量",
+                        weight: 1,
+                        usable: false,
+                        lore: "【第二章典故】引爆石心鎮守備官邸地基後，於地下密室被震裂的寒鐵保險箱中取得的罕見神聖礦石。火神啟示若能藉由破岩鎮深處的火矮人熔爐將其融入黑曜石戒，你的『燃燒之劍』將能獲得永久性的［毀亂］或［強力］標籤，並具備撕裂巨龍阿克斯塔拉特鱗甲的權能。"
+                    },
+                    {
+                        name: "燼火劍扣 (父親的遺物)",
+                        category: "傳奇聖物與核心",
+                        tags: "特殊遺物, 聖火穩定, 0重量",
+                        weight: 0,
+                        usable: false,
+                        lore: "【第二章典故】於林間木屋地窖救出母親希拉時，母親從石牆暗盒交給你的父親遺物。這是身為名劍士的父親年輕時在『海神之矛』火山口邊緣尋獲的古老劍扣，材質與黑曜石戒極為相似，靠近時會發出共鳴，能強化燃燒之劍的穩定度，也是尋找受雇於琳薩工頭的父親的重要線索。"
+                    },
+                    {
+                        name: "聖火輕盾",
+                        category: "武裝與防具",
+                        tags: "1護甲, 保衛同伴額外+1護甲, 1重量",
+                        weight: 1,
+                        usable: false,
+                        lore: "【第一、二章典故】於驛站烈火長廊擊潰兩具『冰晶守衛』後，你發動【徒手鎔鑄】將守衛的板甲與乾涸核心殘渣揉捏重塑而成的古銅色圓盾（另一面贈予老湯姆與韋斯利）。盾牌內側自然浮現『火神的守護』符文，提供 1 點護甲；當執行【保衛】動作消耗掌握保護同伴時，受保護者額外獲得 +1 護甲。"
+                    },
+                    {
+                        name: "探險工具組 (5/5)",
+                        category: "武裝與防具",
+                        tags: "5使用次數, 1重量",
+                        weight: 1,
+                        usable: true,
+                        effect: "gear",
+                        lore: "【基礎裝備】囊括粉筆、磁石、鐵釘、麻繩等實用工具。第三章進入熔爐關口前，你便是取出其中的粗糙麻繩以活結虛綁米拉與塞拉斯，成功演繹押送俘虜的欺敵戰術。"
+                    },
+                    {
+                        name: "治療藥水 x3",
+                        category: "煉金藥劑與補給",
+                        tags: "恢復10HP或除異常, 0重量",
+                        weight: 0,
+                        usable: true,
+                        effect: "heal10",
+                        lore: "【第二章典故】於石心鎮郊新莊園的煉金實驗室中，由母親希拉親手調配的琥珀色溫暖藥劑（依規則為 0 重量）。飲下後可立即恢復 10 點生命值或解除一項異常狀態。"
+                    },
+                    {
+                        name: "抗寒藥劑 x2",
+                        category: "煉金藥劑與補給",
+                        tags: "冰霜+1護甲且面對危險+1, 0重量",
+                        weight: 0,
+                        usable: true,
+                        effect: "coldResist",
+                        lore: "【第二章典故】由魔法能手韋斯利在你的智力指導下（鍊金協同檢定擲出 12 卓越成功）完美煉成的冰晶光澤藥劑（0 重量）。飲用後面對冰霜與『凋零』傷害時獲得 +1 護甲，且相關面對危險檢定獲得 +1 穩定加值，持續至下次休息。"
+                    },
+                    {
+                        name: "聖火強化藥劑 x1",
+                        category: "煉金藥劑與補給",
+                        tags: "下次火劍+1d6傷害且無視護甲, 0重量",
+                        weight: 0,
+                        usable: true,
+                        effect: "fireBoost",
+                        lore: "【第二章典故】由韋斯利加入南方神殿『祝聖銀屑』與高濃度酸蝕溶劑煉成的岩漿色藥劑，核心帶有銀色流光（0 重量）。飲用後下一次『燃燒之劍』攻擊傷害額外增加 +1d6，且無視對手的物理護甲。"
+                    },
+                    {
+                        name: "地城口糧 (3/5)",
+                        category: "煉金藥劑與補給",
+                        tags: "食物, 1份已碳化損毀, 1重量",
+                        weight: 1,
+                        usable: true,
+                        effect: "ration",
+                        lore: "【第一至三章紀錄】供紮營與長途跋涉食用的口糧（1 重量）。第三章穿越風嘯山谷時，因你擔任軍需官分心壓制包包內『餘燼之心』的高熱，導致 1 份口糧碳化變質損毀並消耗 1 份，目前尚餘 3 份可用。"
+                    },
+                    {
+                        name: "晶牙墜飾",
+                        category: "關鍵信物與工具",
+                        tags: "拜龍教通行標記, 冰霜共鳴, 0重量",
+                        weight: 0,
+                        usable: false,
+                        lore: "【第三章典故】於風嘯山谷出口以十呎毀亂火環瞬殺『凋零哨兵』與三頭地獄獵犬後，從哨兵灰燼中撥出的墜飾，內部封存一絲藍色魔力。為拜龍教進入破岩鎮外圍防線的通行標記，你正將其掛在胸前偽裝押送者。"
+                    },
+                    {
+                        name: "冰封海圖鯨骨令牌",
+                        category: "關鍵信物與工具",
+                        tags: "指向東南方燈塔與礦脈, 0重量",
+                        weight: 0,
+                        usable: false,
+                        lore: "【第一章典故】於驛站大廳獻祭兩名拜龍教徒後，從其碳化胸口搜出的深海鯨骨圓盤，表面覆有不融白霜，背面刻有精細海圖，指引著巨石柱、破岩鎮礦脈以及東南方『塔拉莫斯港廢棄燈塔』的能量匯聚座標。"
+                    },
+                    {
+                        name: "領主宅邸地窖鑰匙 & 寒鐵刮刀",
+                        category: "關鍵信物與工具",
+                        tags: "特殊工具與秘道鑰匙, 0重量",
+                        weight: 0,
+                        usable: false,
+                        lore: "【第一、二章典故】寒鐵刮刀為第一章韋斯利從驛站閣樓拋下、專門用來撥取極寒危險品的長柄刮刀；地窖鑰匙則是第二章你偽裝成資深教徒時，教團執事誤認你為同僚而交付的『東南方塔拉莫斯領主宅邸地窖秘道鑰匙』。"
+                    }
+                ]
+            },
+            companions: [
+                { name: "米拉 (Mila)", role: "公會精銳戰士 (Warrior Lv.3)", status: "同行中 · 偽裝受縛待機", desc: "近戰屏障，全副武裝援助+3傷害或分擔反擊" },
+                { name: "塞拉斯 (Silas)", role: "專業追跡者 (Tracker Lv.4)", status: "同行中 · 偽裝受縛待機", desc: "鷹眼斥候，熟悉破岩鎮礦道與琳薩工頭暗號(兩短一重)" },
+                { name: "韋斯利 & 希拉(母親)", role: "煉金術士後勤組", status: "駐守石心鎮郊莊園", desc: "持續研發抗凋零藥劑並守護後方" }
+            ],
+            world: {
+                day: 2,
+                hour: 17,
+                minute: 30,
+                currentNodeId: "rockbreak_forge",
+                currentLocationName: "破岩鎮 - 熔爐關口內部",
+                facing: "南方 (-Y，朝向核心礦井隧道)",
+                tacticalEntities: [
+                    { id: "pc", name: "伊格尼斯 (你)", x: 0, y: 0, type: "pc", note: "手持及遠火刃，配戴晶牙墜飾偽裝押送者" },
+                    { id: "mila", name: "米拉 (戰士)", x: -3, y: 3, type: "ally", note: "麻繩活結虛綁，隨時可拔劍暴起" },
+                    { id: "silas", name: "塞拉斯 (斥候)", x: 3, y: 3, type: "ally", note: "長弓反掛，觀察冷卻管線與回音壁" },
+                    { id: "magmin_a", name: "火矮人守衛 A", x: -5, y: 10, type: "enemy", note: "HP 7 / 護甲 4，正轉身拉動關口重鐵門" },
+                    { id: "magmin_b", name: "火矮人守衛 B", x: 5, y: -10, type: "enemy", note: "HP 7 / 護甲 4，手持灼熱鐵錘在前方帶路" },
+                    { id: "echo_wall", name: "坑道回音壁", x: -15, y: -25, type: "object", note: "可敲擊『兩短一重』暗號聯繫工頭琳薩" },
+                    { id: "core_mine", name: "核心礦井深處入口", x: 0, y: -60, type: "object", note: "地脈抽取裝置與琳薩工頭受困方向" }
+                ],
+                regionsSync: [
+                    { id: "stoneheart", name: "石心鎮 (歇腳處)", status: "最後已知：地熱復甦 · 重建中", omen: "出發前你推舉老湯姆為代理鎮長清剿叛徒，母親希拉與韋斯利留守鎮郊莊園研究藥劑。", intelSource: "第2天清晨 · 親身經歷" },
+                    { id: "rockbreak", name: "破岩鎮 & 礦場", status: "當前親歷：火矮人與教團合流", omen: "你已潛入熔爐關口內部，得知工頭琳薩退守核心礦井（暗號：兩短一重），父親曾受雇於她。", intelSource: "第2天黃昏 · 親身潛入" },
+                    { id: "taramos", name: "塔拉莫斯港 & 燈塔", status: "已知線索：戒嚴封鎖 · 燈塔異動", omen: "老湯姆已派信使護送受咒帳本前往首都索討1400G債權；鯨骨海圖與秘道鑰匙皆指向廢棄燈塔。", intelSource: "第2天清晨 · 令牌與帳本線索" },
+                    { id: "spear", name: "海神之矛 (火山島)", status: "傳聞情報：巨龍阿克斯塔拉特盤踞", omen: "三週前巨龍降臨封鎖所有航線；據韋斯利與教徒口供，巨龍正盤踞火山口，母親給的燼火劍扣亦源於此。", intelSource: "第1~2天 · 韋斯利與教徒口供" }
+                ],
+                worldNodes: [
+                    { id: "windward", name: "迎風鎮", x: 45, y: 18, icon: "🌾", color: "#4ade80", desc: "北方農業小鎮，糧食產地" },
+                    { id: "stoneheart", name: "石心鎮 (歇腳處)", x: 58, y: 34, icon: "🔥", color: "#f97316", desc: "伊格尼斯解放之地，擁有私人莊園" },
+                    { id: "monolith", name: "巨石柱廢墟", x: 30, y: 36, icon: "🏛️", color: "#a855f7", desc: "已被伊格尼斯引爆摧毀的凋零之胃" },
+                    { id: "kelp", name: "海草森林", x: 22, y: 18, icon: "🌿", color: "#06b6d4", desc: "海精靈神祕殖民地" },
+                    { id: "swamp", name: "嘶茲克斯特 (沼澤)", x: 42, y: 55, icon: "🦎", color: "#10b981", desc: "蜥蜴人首都，維持脆弱和平" },
+                    { id: "taramos", name: "塔拉莫斯港 & 燈塔", x: 78, y: 45, icon: "🏰", color: "#3b82f6", desc: "新月島首都，威廉領主所在地與海圖指向的燈塔" },
+                    { id: "spear", name: "海神之矛 (火山)", x: 16, y: 62, icon: "🌋", color: "#ef4444", desc: "巨龍阿克斯塔拉特的巢穴" },
+                    { id: "rockbreak_forge", name: "破岩鎮 & 核心礦場", x: 45, y: 80, icon: "⚒️", color: "#eab308", desc: "當前位置：火矮人與拜龍教主力盤踞的鍛造重鎮" }
+                ]
+            },
+            chapterSummaries: [
+                "【第一章：半月之夜與餘燼之心】15歲人類燔祭者伊格尼斯為繼承摯友約瑟夫的生命之火並拯救遭異常大雪侵襲的石心鎮，與煉金術士韋斯利聯手擊退亡靈與冰晶巨獸，在半月之夜衝入巨石柱刺殺白袍祭司，以五瓶火龍舌烈酒撐爆巨石柱，並咬破中指以熱血將『凍結之心』馴服為『餘燼之心』，升至 Lv.2（體質 15->16，HP 20，習得殺戮之火）。",
+                "【第二章：林間歸巢與官邸斬首】伊格尼斯趕回林間木屋擊潰變異獵犬與守衛，救出母親希拉並獲得父親遺留的『燼火劍扣』線索。隨後偽裝成凋零教徒潛入石心鎮守備官邸，零距離突襲腰斬教主格雷（分身/高階祭司）與冰晶親衛，升至 Lv.3（習得煽動者）。接著以鮮血鎔鑄定時引信炸毀官邸地基、撞開寒鐵保險箱解放石心鎮地熱，取得『龍血黑曜石原礦』與『受咒帳本』，推舉老湯姆為代理鎮長，獲贈鎮郊莊園、300G 現款與 1400G 債權，並由母親與韋斯利煉成抗寒與聖火強化藥劑，招募 Lv.4 追跡者塞拉斯與戰士米拉。",
+                "【第三章：風嘯山谷與熔爐關口（進行中）】伊格尼斯率米拉與塞拉斯南下破岩鎮，得知工頭琳薩的聯絡暗號為敲擊回音壁『兩短一重（此處有火，寒冬止步）』。在山谷口以火劍投擲與以火攻火(+4)施展十呎毀亂火環瞬殺凋零哨兵與三頭地獄獵犬，取得『晶牙墜飾』。最後利用晶塵沉降空檔，假裝押送被俘的米拉與塞拉斯，成功瞞過兩名火矮人（Magmin，HP 7，護甲 4，受傷噴濺熔岩鮮血），踏入破岩鎮『熔爐關口』內部，正準備通往『核心礦井』！"
+            ],
+            autoSaveTurnSource: true,
+            knowledgeSources: [
+                {
+                    id: "src_ch1",
+                    title: "第一章：半月之夜與餘燼之心 (完整紀錄)",
+                    type: "過去章節",
+                    enabled: true,
+                    timestamp: "第 1 天紀錄",
+                    content: "15歲人類燔祭者伊格尼斯（身高1米77、右眼鮮紅如火、左手中指有燒傷疤痕並鑲嵌不滅的黑曜石戒，內含摯友樵夫約瑟夫犧牲換取父母康復的生命之火）。於石心鎮郊外林道擊殺亡靈遊蕩者，逃至驛站與鍊金術士韋斯利聯手擊敗吸食熱能的冰晶巨獸，以寒鐵刮刀與鍍鉛黃銅筒收容『凍結之心碎片』與『翠綠炎渣』。在驛站大廳以火龍舌烈酒配合振火神通與予我燃油，逼問並斬殺兩名拜龍教徒（獲知其慾望燃料為藉由巨龍吐息重塑為優越種族、擺脫凡人脆弱），搜出『冰封海圖鯨骨令牌』。隨後於烈火長廊擊殺地獄獵犬與兩名冰晶守衛（弱點在頸甲接縫處的冰核心），以徒手鎔鑄打造兩面『聖火輕盾（1護甲，保衛同伴額外+1護甲）』。最後衝入半月之夜啟動的『巨石柱』刺殺白袍祭司，以五瓶火龍舌烈酒撐爆凋零之胃，並在坍塌廢墟中咬破左手中指以熱血灌注黑曜石戒，將紫色核心殘渣馴服為『餘燼之心』，升至 Lv.2（體質 15->16，HP 20，習得【殺戮之火】）。"
+                },
+                {
+                    id: "src_ch2",
+                    title: "第二章：林間歸巢與官邸斬首 (完整紀錄)",
+                    type: "過去章節",
+                    enabled: true,
+                    timestamp: "第 2 天清晨紀錄",
+                    content: "伊格尼斯憶述見聞認出父親臨行信件上的『鎖鏈纏繞鐵鎚』為破岩鎮工頭琳薩．克蘭的私人印章。返回林間木屋擊殺變異地獄獵犬，以徒手鎔鑄封死活板門並透過細縫以毀亂火刃絞殺上方的變異冰晶守衛者，在地窖救出母親希拉，獲得父親遺留的『燼火劍扣』與『遮斷氣息濃縮液』。接著以殺戮之火（遠程、強力、毀亂）配合韋斯利清除追兵後進入石心鎮。在公會結識櫃檯姊姊米拉（戰士），隨後以鯨骨令牌與餘燼之心溢出的凋零死氣完美偽裝成資深教徒，從教團執事手中取得『東南方領主宅邸地窖秘道鑰匙』並混入石心鎮守備官邸。在零距離下召喚十呎及遠毀亂火刃刺穿教主格雷（分身/高階祭司）並腰斬冰晶親衛，以『予我燃油，予我烈火』得知教團正前往破岩鎮抽取『地脈之血』，獻祭執事後升至 Lv.3（習得【煽動者】）。隨後與前守備官老湯姆會合，潛入官邸地下燃油庫，咬破食指以鮮血鎔鑄『聖火定時引信』炸毀官邸地基，再於密室取得『龍血黑曜石原礦』與『受咒帳本』，並以聖火輕盾撞開寒鐵保險箱解放石心鎮地熱。推舉老湯姆為代理鎮長，獲贈 300G 現款、鎮郊私人莊園（含煉金室與鍛造爐）及 1400G 中央政府債權。出發前與母親、韋斯利在莊園煉成『治療藥水x3』、『抗寒藥劑x2』與『聖火強化藥劑x1』，並以 13 點卓越成功招募 Lv.4 專業追跡者塞拉斯，與戰士米拉組成三人小隊南下。"
+                },
+                {
+                    id: "src_ch3",
+                    title: "第三章：風嘯山谷與熔爐關口 (當前最新進度)",
+                    type: "當前章節",
+                    enabled: true,
+                    timestamp: "第 2 天黃昏紀錄",
+                    content: "出發前塞拉斯告知破岩鎮工頭琳薩．克蘭留給友軍的聯絡暗號：在礦道關口對著回音壁用重物敲擊金屬『兩聲短促、一聲沈重（意為：此處有火，寒冬止步）』。穿越風嘯山谷時，米拉（領路11）與塞拉斯（斥候11）表現完美，伊格尼斯（軍需官5）因壓制餘燼之心高熱導致 1 份口糧碳化損毀（獲得 1 XP，目前 XP 5/10，口糧剩 3/5）。在山谷出口發現凋零哨兵與三頭地獄獵犬，塞拉斯一箭射碎哨兵骨笛，伊格尼斯投擲火劍重創哨兵，混戰中遭快速獵犬凍傷手臂扣 3 HP（HP 17/20），隨即觸發【以火攻火】擲出 +4，揮動十呎［及遠］［毀亂］火環打出 14 點卓越成功，一劍瞬殺哨兵與三頭獵犬，搜出『晶牙墜飾』。透過憶述見聞得知火矮人（Magmin，HP 7，護甲 4，受傷噴濺熔岩鮮血，弱點為極寒熱脹冷縮與高等鍛造技藝）。最後趁硫磺裂谷晶塵沉降空檔，以麻繩活結虛綁米拉與塞拉斯偽裝成押送俘虜，配戴晶牙墜飾並召喚［及遠］火刃（3/3次），擲出 13 點卓越成功瞞過兩名火矮人守衛，踏入破岩鎮『熔爐關口』內部，正準備通往『核心礦井』！"
+                },
+                {
+                    id: "src_world",
+                    title: "《巨龍阿克斯塔拉特》戰役前置與新月島設定",
+                    type: "官方設定",
+                    enabled: true,
+                    timestamp: "核心世界觀",
+                    content: "1. 巨龍阿克斯塔拉特 (奧法魔敵)：盤踞西方火山島『海神之矛』，封鎖所有航線，目的是保護火山內的龍卵並為雛龍尋找食物。\n2. 拜龍教 (野心黨眾)：由卡爾洛夫．格雷創立，利用巨石柱與地脈抽取『凋零』寒氣，企圖在塔拉莫斯港廢棄燈塔完成儀式。\n3. 火矮人 Magmin (成群部族)：火矮人之王拉傑克．赤鋼率部族自破岩礦場掘出，與拜龍教交易，利用地熱鍛造爐量產冰晶裝甲。\n4. 關鍵人物：破岩鎮工頭琳薩．克蘭（退守核心礦井）、塔拉莫斯港市長威廉．塔拉莫斯領主、蜥蜴人代表李嘶特、伊格尼斯下落不明的劍士父親（曾受雇於琳薩工頭）。"
+                },
+                {
+                    id: "src_rules",
+                    title: "《地城世界》GM 帶團原則與戰鬥機制錨點",
+                    type: "規則資料庫",
+                    enabled: true,
+                    timestamp: "核心規則",
+                    content: "• 擲骰分級：2d6+調整值，10+完全成功；7-9部分成功（伴隨代價、妥協或艱難抉擇）；6-失敗（GM執行硬動作，且玩家自動標記 +1 XP）。\n• 複數敵人傷害計算：同時受複數敵人傷害時，只擲其中傷害骰最高的一顆，每多一名敵人額外 +1 傷害（或擲等同敵人數量取最高）。\n• 座標系規範：永遠以伊格尼斯所在位置為原點 (0, 0)，西為 -X、東為 +X、北為 +Y、南為 -Y（單位：英尺 ft.）。"
+                }
+            ],
+            history: []
+        };
+
+        let gameState = JSON.parse(JSON.stringify(DEFAULT_GAME_STATE));
+        let mapMode = "tactical"; // 'tactical' | 'world'
+        let currentInvCategory = "ALL";
+        let currentCodexCategory = "ALL";
+        let selectedSourceId = "src_ch3";
+        let selectedStatKey = "CON"; // 預設展開顯示體質的增減原因
+        let apiKey = localStorage.getItem("dw_ignis_api_key") || "";
+        let selectedModel = localStorage.getItem("dw_ignis_model") || "gemini-3.1-pro-preview";
+
+        // Map Zoom & Pan Camera State
+        let mapZoom = 1.0;
+        let mapPanX = 0;
+        let mapPanY = 0;
+        let isDraggingMap = false;
+        let mapDragMoved = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        // =========================================================================
+        // 2. INITIALIZATION & LIFECYCLE (WITH INDEXED-DB LARGE STORAGE SUPPORT)
+        // =========================================================================
+        const IDB_NAME = "DW_Ignis_Simulator_DB";
+        const IDB_STORE = "gamestate_store";
+        const IDB_KEY = "canonical_state_v5";
+
+        function openSimulatorIDB() {
+            return new Promise((resolve, reject) => {
+                if (!window.indexedDB) {
+                    reject(new Error("IndexedDB not supported"));
+                    return;
+                }
+                const req = indexedDB.open(IDB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(IDB_STORE)) {
+                        db.createObjectStore(IDB_STORE);
+                    }
+                };
+                req.onsuccess = (e) => resolve(e.target.result);
+                req.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        async function saveStateToIDB(stateObj) {
+            try {
+                const db = await openSimulatorIDB();
+                const tx = db.transaction(IDB_STORE, "readwrite");
+                tx.objectStore(IDB_STORE).put(stateObj, IDB_KEY);
+            } catch (e) {
+                console.warn("IndexedDB save fallback warning:", e);
+            }
+        }
+
+        async function loadStateFromIDB() {
+            try {
+                const db = await openSimulatorIDB();
+                return await new Promise((resolve, reject) => {
+                    const tx = db.transaction(IDB_STORE, "readonly");
+                    const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => reject(req.error);
+                });
+            } catch (e) {
+                return null;
+            }
+        }
+
+        window.onload = async () => {
+            await loadSavedState();
+            if (apiKey) {
+                document.getElementById("apiKeyInput").value = apiKey;
+            }
+            const modelSel = document.getElementById("modelSelect");
+            const presetModels = ["gemini-3.1-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"];
+            if (presetModels.includes(selectedModel)) {
+                modelSel.value = selectedModel;
+            } else {
+                modelSel.value = "custom";
+                document.getElementById("customModelWrapper").classList.remove("hidden");
+                document.getElementById("customModelInput").value = selectedModel;
+            }
+            updateApiStatusIndicator();
+
+            renderAllUI();
+            renderInitialWelcomeChat();
+            renderLoreDatabase();
+            renderCodexEntries();
+            initCloudSyncInputs();
+            setupCanvasResize();
+
+            document.getElementById("actionInput").addEventListener("keydown", function (e) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitAction();
+                }
+            });
+        };
+
+        function saveStateToLocal() {
+            // 1. Always save full state (including multi-hundred-thousand-word sources) to IndexedDB
+            saveStateToIDB(gameState);
+            // 2. Also try saving to localStorage; if sources are huge (>4MB), store a lightweight copy in localStorage
+            try {
+                localStorage.setItem("dw_ignis_gamestate_v4", JSON.stringify(gameState));
+            } catch (e) {
+                try {
+                    const lightCopy = Object.assign({}, gameState, {
+                        knowledgeSources: (gameState.knowledgeSources || []).map(s => ({
+                            ...s,
+                            content: s.content.length > 50000 ? s.content.slice(0, 50000) + "\n...(完整百萬字內容已安全儲存於瀏覽器 IndexedDB 資料庫)..." : s.content
+                        }))
+                    });
+                    localStorage.setItem("dw_ignis_gamestate_v4", JSON.stringify(lightCopy));
+                } catch (innerErr) {
+                    console.warn("LocalStorage quota full, using IndexedDB primary storage.");
+                }
+            }
+        }
+
+        function normalizeLoadedState(parsed) {
+            if (!parsed || !parsed.character || !parsed.world) return;
+            gameState = parsed;
+            for (const k of Object.keys(DEFAULT_GAME_STATE.character.stats)) {
+                if (gameState.character.stats[k] && !gameState.character.stats[k].reason) {
+                    gameState.character.stats[k].reason = DEFAULT_GAME_STATE.character.stats[k].reason;
+                }
+            }
+            if (!Array.isArray(gameState.knowledgeSources) || gameState.knowledgeSources.length === 0) {
+                gameState.knowledgeSources = JSON.parse(JSON.stringify(DEFAULT_GAME_STATE.knowledgeSources));
+            }
+            if (typeof gameState.autoSaveTurnSource === "undefined") {
+                gameState.autoSaveTurnSource = true;
+            }
+            if (Array.isArray(gameState.world.regionsSync)) {
+                gameState.world.regionsSync.forEach((r, idx) => {
+                    const defReg = DEFAULT_GAME_STATE.world.regionsSync[idx];
+                    if (!r.intelSource && defReg) {
+                        r.intelSource = defReg.intelSource;
+                        r.status = defReg.status;
+                        r.omen = defReg.omen;
+                    }
+                    delete r.progress;
+                });
+            }
+        }
+
+        async function loadSavedState() {
+            try {
+                // Prefer IndexedDB first (supports hundreds of MBs of long novels/logs)
+                const idbData = await loadStateFromIDB();
+                if (idbData && idbData.character && idbData.world) {
+                    normalizeLoadedState(idbData);
+                    return;
+                }
+                const raw = localStorage.getItem("dw_ignis_gamestate_v4");
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    normalizeLoadedState(parsed);
+                }
+            } catch (e) {
+                console.warn("Failed to load state, using default Chapter 3 state.");
+            }
+        }
+
+        function resetToChapter3Default() {
+            gameState = JSON.parse(JSON.stringify(DEFAULT_GAME_STATE));
+            saveStateToLocal();
+            document.getElementById("chatHistory").innerHTML = "";
+            renderAllUI();
+            renderInitialWelcomeChat();
+            closeModal("archiveModal");
+            showAlert("已重置回第三章熔爐關口", "角色狀態、物品欄與破岩鎮【熔爐關口】火矮人座標已完整恢復至第三章最新進度！");
+        }
+
+        // =========================================================================
+        // 3. UI RENDERING (LEFT SIDEBAR, ATTRIBUTE REASONS, INVENTORY, WORLD SYNC)
+        // =========================================================================
+        function calculateTotalLoad() {
+            const itemWeight = gameState.character.inventory.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+            const goldWeight = Math.floor((gameState.character.gold || 0) / 100);
+            return itemWeight + goldWeight;
+        }
+
+        function showStatBreakdown(statKey) {
+            selectedStatKey = statKey;
+            renderStatsGrid();
+        }
+
+        function renderStatsGrid() {
+            const c = gameState.character;
+            const statsDiv = document.getElementById("statsContainer");
+            const breakdownBox = document.getElementById("statBreakdownBox");
+            if (!statsDiv || !breakdownBox) return;
+
+            statsDiv.innerHTML = "";
+            for (const [key, data] of Object.entries(c.stats)) {
+                const effectiveMod = data.debility ? data.mod - 1 : data.mod;
+                const modStr = effectiveMod >= 0 ? `+${effectiveMod}` : `${effectiveMod}`;
+                const isSelected = key === selectedStatKey;
+                statsDiv.innerHTML += `
+                    <div onclick="showStatBreakdown('${key}')" class="cursor-pointer p-2 rounded-lg border transition flex justify-between items-center ${
+                        isSelected
+                            ? "bg-orange-950/60 border-orange-500/80 shadow"
+                            : data.debility
+                                ? "bg-red-950/50 border-red-700/70"
+                                : "bg-slate-900 border-slate-800 hover:border-slate-700"
+                    }" title="點擊查看【${data.name}】細項增減原因與對應動作">
+                        <div>
+                            <span class="font-bold text-slate-200">${data.name} ${key}</span>
+                            <span class="text-[10px] text-slate-400 block">數值 ${data.val} ${data.debility ? `<span class='text-red-400 font-bold'>(${data.debName}-1)</span>` : `<span class='text-slate-500'>(正常)</span>`}</span>
+                        </div>
+                        <span class="font-mono-code text-sm font-bold px-1.5 py-0.5 rounded ${
+                            effectiveMod > 0 ? "bg-orange-500/20 text-orange-300" : effectiveMod < 0 ? "bg-red-500/20 text-red-300" : "bg-slate-800 text-slate-300"
+                        }">${modStr}</span>
+                    </div>
+                `;
+            }
+
+            const activeStat = c.stats[selectedStatKey] || c.stats.CON;
+            const effMod = activeStat.debility ? activeStat.mod - 1 : activeStat.mod;
+            const effSign = effMod >= 0 ? `+${effMod}` : `${effMod}`;
+            breakdownBox.innerHTML = `
+                <div class="flex justify-between items-center mb-1 pb-1 border-b border-slate-800">
+                    <span class="font-bold text-orange-300"><i class="fa-solid fa-magnifying-glass-chart mr-1"></i>【${activeStat.name} (${selectedStatKey})】數值與增減原因</span>
+                    <span class="font-mono-code text-xs bg-slate-950 px-1.5 py-0.5 rounded text-amber-300">屬性值 ${activeStat.val} ➔ 調整值 ${effSign}</span>
+                </div>
+                <p class="text-slate-300">${activeStat.reason || "依角色創建與升級歷程計算之基礎屬性。"}</p>
+                <div class="mt-1.5 pt-1 border-t border-slate-800/80 text-[10px] text-slate-400 font-mono-code">
+                    💡 異常狀態：${activeStat.debility ? `<span class="text-red-400 font-bold">目前承受【${activeStat.debName}】（調整值 -1）</span>` : `無（未承受【${activeStat.debName}】）`}
+                </div>
+            `;
+        }
+
+        function renderAllUI() {
+            const c = gameState.character;
+            const w = gameState.world;
+
+            // Header & Mobile compact status
+            document.getElementById("charName").innerText = c.name;
+            document.getElementById("charLevelBadge").innerText = `Lv.${c.level}`;
+            document.getElementById("headerLocationSub").innerHTML = `<i class="fa-solid fa-location-crosshairs text-orange-400 mr-1"></i>${w.currentLocationName}`;
+            document.getElementById("mobileHpDisplay").innerText = `${c.hp}/${c.maxHp}`;
+            document.getElementById("mobileBrandDisplay").innerText = `${c.burningBrand.uses}/${c.burningBrand.maxUses}`;
+
+            // HP & XP
+            const xpNeed = c.level + 7;
+            document.getElementById("hpText").innerText = `${c.hp} / ${c.maxHp}`;
+            document.getElementById("hpBar").style.width = `${Math.max(0, Math.min(100, (c.hp / c.maxHp) * 100))}%`;
+            document.getElementById("xpText").innerText = `${c.xp} / ${xpNeed}`;
+            document.getElementById("xpBar").style.width = `${Math.max(0, Math.min(100, (c.xp / xpNeed) * 100))}%`;
+
+            // Armor, Damage, Load
+            const totalLoad = calculateTotalLoad();
+            const maxLoad = 9 + c.stats.STR.mod;
+            const goldWeight = Math.floor((c.gold || 0) / 100);
+            document.getElementById("armorDisplay").innerHTML = `${c.armor} <span class="text-[10px] font-normal text-slate-500">(輕盾)</span>`;
+            document.getElementById("dmgDieDisplay").innerText = `1${c.damageDie}`;
+            const loadEl = document.getElementById("loadDisplay");
+            loadEl.innerText = `${totalLoad} / ${maxLoad}`;
+            loadEl.className = `text-sm font-mono-code font-bold ${totalLoad > maxLoad ? "text-red-400" : "text-emerald-400"}`;
+
+            const sidebarLoadEl = document.getElementById("sidebarLoadSummary");
+            if (sidebarLoadEl) {
+                sidebarLoadEl.innerText = `目前總重：${totalLoad} / ${maxLoad} 上限 (含${c.gold}G=${goldWeight}w)`;
+                sidebarLoadEl.className = `text-[10px] font-mono-code mt-0.5 ${totalLoad > maxLoad ? "text-red-400 font-bold" : "text-emerald-400"}`;
+            }
+            const modalLoadEl = document.getElementById("modalLoadDisplay");
+            if (modalLoadEl) {
+                modalLoadEl.innerText = `${totalLoad} / ${maxLoad} 重量`;
+                modalLoadEl.className = `text-base font-mono-code font-bold mt-0.5 ${totalLoad > maxLoad ? "text-red-400" : "text-emerald-400"}`;
+            }
+            const modalGoldEl = document.getElementById("modalGoldDisplay");
+            if (modalGoldEl) {
+                modalGoldEl.innerHTML = `${c.gold} G <span class="text-xs text-slate-400 font-normal">(${goldWeight} 重量)</span>`;
+            }
+
+            // Burning Brand Widget
+            document.getElementById("brandUsesText").innerText = `${c.burningBrand.uses} / ${c.burningBrand.maxUses} 次`;
+            const tagsDiv = document.getElementById("brandTagsContainer");
+            tagsDiv.innerHTML = c.burningBrand.activeTags.map(t => 
+                `<span class="text-[10px] bg-purple-900/60 text-purple-200 border border-purple-600/50 px-1.5 py-0.5 rounded">${t}</span>`
+            ).join("");
+
+            const ffwfBanner = document.getElementById("ffwfBonusBanner");
+            if (c.fightingFireBonus > 0) {
+                ffwfBanner.classList.remove("hidden");
+                document.getElementById("ffwfBonusVal").innerText = `+${c.fightingFireBonus}`;
+            } else {
+                ffwfBanner.classList.add("hidden");
+            }
+
+            // Render 6 Attributes & Breakdown
+            renderStatsGrid();
+
+            // Companions
+            const compDiv = document.getElementById("companionsList");
+            compDiv.innerHTML = gameState.companions.map(comp => `
+                <div class="bg-slate-900 p-2 rounded-lg border border-slate-800/90">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-slate-200">${comp.name}</span>
+                        <span class="text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-800/60 px-1.5 py-0.2 rounded">${comp.status}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${comp.desc}</div>
+                </div>
+            `).join("");
+
+            // Inventory & Gold
+            document.getElementById("goldDisplay").innerHTML = `<i class="fa-solid fa-coins mr-1"></i>${c.gold} G`;
+            renderInventoryLists();
+
+            // World Time & Sync Bar
+            const minStr = String(w.minute || 0).padStart(2, "0");
+            const hrStr = String(w.hour || 0).padStart(2, "0");
+            document.getElementById("clockText").innerText = `第 ${w.day} 天 ${hrStr}:${minStr}`;
+            document.getElementById("facingIndicator").innerText = `面向: ${w.facing}`;
+            document.getElementById("mapOverlayTitle").innerText = w.currentLocationName;
+
+            renderWorldRegionsSync();
+            renderTacticalEntitiesBar();
+            renderLoreDatabase();
+            drawMap();
+            updateStoryTranscriptBox();
+            saveStateToLocal();
+        }
+
+        function setInvCategoryFilter(cat) {
+            currentInvCategory = cat;
+            document.querySelectorAll(".inv-cat-btn").forEach(btn => {
+                btn.className = "inv-cat-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700";
+            });
+            const activeBtn = document.getElementById("invCat_" + cat);
+            if (activeBtn) {
+                activeBtn.className = "inv-cat-btn px-2.5 py-1.5 rounded-lg bg-orange-600 text-white font-bold";
+            }
+            renderInventoryLists();
+        }
+
+        function showItemLoreDetail(index) {
+            const item = gameState.character.inventory[index];
+            if (!item) return;
+
+            const useButtonHtml = item.usable ? `<button onclick="useInventoryItem(${index})" class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold shadow"><i class="fa-solid fa-flask mr-1"></i>使用</button>` : "";
+
+            // Populate inline box in Left Sidebar
+            const sideBox = document.getElementById("sidebarItemLoreBox");
+            if (sideBox) {
+                sideBox.classList.remove("hidden");
+                sideBox.innerHTML = `
+                    <div class="flex justify-between items-start gap-2 mb-1">
+                        <div>
+                            <span class="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-500/40 px-1.5 py-0.2 rounded mr-1">${item.category || "冒險物品"}</span>
+                            <strong class="text-xs text-white">${item.name}</strong>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            ${useButtonHtml}
+                            <button onclick="document.getElementById('sidebarItemLoreBox').classList.add('hidden')" class="text-slate-400 hover:text-white px-1"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <div class="text-[10px] font-mono-code text-amber-300 mb-1">[${item.tags}] · 重量 ${item.weight}</div>
+                    <p class="text-slate-200 text-[11px] leading-relaxed">${item.lore || "由冒險旅途中獲得的物品。"}</p>
+                `;
+            }
+
+            // Also populate Modal Detail Box if modal is open
+            const modalBox = document.getElementById("itemDetailLoreBox");
+            if (modalBox) {
+                modalBox.classList.remove("hidden");
+                modalBox.innerHTML = `
+                    <div class="flex justify-between items-start gap-2 mb-1.5">
+                        <div>
+                            <span class="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-500/40 px-1.5 py-0.5 rounded mr-1.5">${item.category || "冒險物品"}</span>
+                            <strong class="text-sm text-white">${item.name}</strong>
+                            <span class="text-[11px] font-mono-code text-amber-300 ml-2">[${item.tags}] (${item.weight} 重量)</span>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${useButtonHtml}
+                            <button onclick="document.getElementById('itemDetailLoreBox').classList.add('hidden')" class="text-slate-400 hover:text-white px-1"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <p class="text-slate-200 leading-relaxed">${item.lore || "由冒險旅途中獲得的物品。"}</p>
+                `;
+            }
+        }
+
+        function renderInventoryLists() {
+            const list = document.getElementById("inventoryList");
+            const manageList = document.getElementById("manageInventoryList");
+            if (!list || !manageList) return;
+
+            const sideQuery = (document.getElementById("sidebarItemSearch")?.value || "").trim().toLowerCase();
+            const modalQuery = (document.getElementById("modalItemSearch")?.value || "").trim().toLowerCase();
+
+            const categoriesOrder = ["傳奇聖物與核心", "武裝與防具", "煉金藥劑與補給", "關鍵信物與工具"];
+            const categoryIcons = {
+                "傳奇聖物與核心": "fa-fire-flame-curved text-orange-400",
+                "武裝與防具": "fa-shield-halved text-sky-400",
+                "煉金藥劑與補給": "fa-flask text-emerald-400",
+                "關鍵信物與工具": "fa-key text-amber-400"
+            };
+
+            // 1. Render Sidebar Categorized List
+            let sideHtml = "";
+            categoriesOrder.forEach(cat => {
+                const matched = gameState.character.inventory
+                    .map((item, idx) => ({ item, idx }))
+                    .filter(({ item }) => (item.category || "關鍵信物與工具") === cat)
+                    .filter(({ item }) => !sideQuery || item.name.toLowerCase().includes(sideQuery) || (item.tags || "").toLowerCase().includes(sideQuery) || (item.lore || "").toLowerCase().includes(sideQuery));
+
+                if (matched.length > 0) {
+                    sideHtml += `
+                        <div>
+                            <div class="text-[10px] font-bold text-slate-400 mb-1 flex items-center gap-1">
+                                <i class="fa-solid ${categoryIcons[cat] || 'fa-box'}"></i> ${cat}
+                            </div>
+                            <ul class="space-y-1">
+                                ${matched.map(({ item, idx }) => `
+                                    <li onclick="showItemLoreDetail(${idx})" class="cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 p-2 rounded-lg border border-slate-800/80 hover:border-orange-500/40 transition flex items-center justify-between gap-2" title="點擊展開檢視第 1~3 章典故與詳細說明">
+                                        <div class="min-w-0">
+                                            <div class="font-medium text-slate-200 truncate flex items-center gap-1.5">
+                                                <span>${item.name}</span>
+                                            </div>
+                                            <div class="text-[10px] text-slate-500 truncate">${item.tags}</div>
+                                        </div>
+                                        <div class="flex items-center gap-1.5 shrink-0">
+                                            <span class="text-[10px] font-mono-code text-slate-400">${item.weight}w</span>
+                                            ${item.usable ? `<button onclick="event.stopPropagation(); useInventoryItem(${idx})" class="text-[10px] bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 px-1.5 py-0.5 rounded border border-emerald-700/50 transition">使用</button>` : `<i class="fa-solid fa-circle-info text-slate-500 text-[11px]"></i>`}
+                                        </div>
+                                    </li>
+                                `).join("")}
+                            </ul>
+                        </div>
+                    `;
+                }
+            });
+            list.innerHTML = sideHtml || `<div class="text-center text-slate-500 py-4 text-xs">找不到符合「${sideQuery}」的物品</div>`;
+
+            // 2. Render Modal Categorized List with Lore Preview
+            let modalHtml = "";
+            categoriesOrder.forEach(cat => {
+                if (currentInvCategory !== "ALL" && currentInvCategory !== cat) return;
+                const matched = gameState.character.inventory
+                    .map((item, idx) => ({ item, idx }))
+                    .filter(({ item }) => (item.category || "關鍵信物與工具") === cat)
+                    .filter(({ item }) => !modalQuery || item.name.toLowerCase().includes(modalQuery) || (item.tags || "").toLowerCase().includes(modalQuery) || (item.lore || "").toLowerCase().includes(modalQuery));
+
+                if (matched.length > 0) {
+                    modalHtml += `
+                        <div class="bg-slate-950/90 p-3 rounded-xl border border-slate-800/90">
+                            <h4 class="text-xs font-bold text-slate-300 mb-2 flex items-center gap-1.5 pb-1 border-b border-slate-800">
+                                <i class="fa-solid ${categoryIcons[cat] || 'fa-box'}"></i> ${cat} (${matched.length})
+                            </h4>
+                            <div class="space-y-2">
+                                ${matched.map(({ item, idx }) => `
+                                    <div onclick="showItemLoreDetail(${idx})" class="cursor-pointer bg-slate-900/90 hover:bg-slate-800/70 p-2.5 rounded-lg border border-slate-800 hover:border-orange-500/40 transition">
+                                        <div class="flex justify-between items-center gap-2">
+                                            <div class="font-bold text-slate-100 flex items-center gap-2">
+                                                <span>${item.name}</span>
+                                                <span class="text-[10px] font-mono-code bg-slate-950 text-amber-300 px-1.5 py-0.5 rounded border border-slate-800">${item.weight} 重量</span>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[10px] text-slate-400">${item.tags}</span>
+                                                ${item.usable ? `<button onclick="event.stopPropagation(); useInventoryItem(${idx})" class="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">使用</button>` : ""}
+                                            </div>
+                                        </div>
+                                        <p class="text-[11px] text-slate-300 mt-1.5 leading-relaxed">${item.lore || "無詳細典故描述。"}</p>
+                                    </div>
+                                `).join("")}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            manageList.innerHTML = modalHtml || `<div class="text-center text-slate-500 py-8 text-xs">沒有符合搜尋條件的物品</div>`;
+        }
+
+        function renderWorldRegionsSync() {
+            const bar = document.getElementById("worldRegionsSyncBar");
+            if (!bar) return;
+            bar.innerHTML = gameState.world.regionsSync.map(reg => {
+                const isCurrentArea = gameState.world.currentLocationName.includes(reg.name.split(" ")[0]);
+                return `
+                <div class="bg-slate-950 p-2.5 rounded-lg border ${isCurrentArea ? "border-orange-500/60 bg-orange-950/15" : "border-slate-800/90"} flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center gap-1">
+                            <span class="font-bold text-slate-200">${reg.name}</span>
+                            <span class="text-[9px] font-mono-code px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800 shrink-0">${reg.intelSource || "已知情報"}</span>
+                        </div>
+                        <div class="text-[10px] text-orange-300/95 font-medium mt-1">${reg.status}</div>
+                        <p class="text-[11px] lg:text-[10px] text-slate-300 lg:text-slate-400 mt-1 leading-relaxed lg:line-clamp-2" title="${reg.omen}">${reg.omen}</p>
+                    </div>
+                </div>
+            `}).join("");
+        }
+
+        // =========================================================================
+        // 4. GM-DRIVEN CHARACTER & ITEM UPDATES (HP, 以火攻火, 藥水消耗)
+        // =========================================================================
+        function modifyStat(stat, amount) {
+            const c = gameState.character;
+            if (stat === "hp") {
+                const oldHp = c.hp;
+                c.hp = Math.max(0, Math.min(c.maxHp, c.hp + amount));
+                const dmgTaken = oldHp - c.hp;
+                // 檢查燔祭者【以火攻火】：受到奇數點傷害時自動觸發 1d4
+                if (dmgTaken > 0 && dmgTaken % 2 === 1) {
+                    const ffwfRoll = Math.floor(Math.random() * 4) + 1;
+                    c.fightingFireBonus = ffwfRoll;
+                    addChatMessage(
+                        "系統判定 · 以火攻火 (Fighting Fire With Fire)",
+                        `你受到了 <strong class="text-red-400">${dmgTaken} 點（奇數）</strong>傷害！體內的烈焰因痛楚而沸騰湧現，自動觸發職業動作<strong>【以火攻火】</strong>！<br>🎲 擲出 1d4 = <strong class="text-orange-400 text-base">+${ffwfRoll}</strong>（已自動蓄能，將於你下一次召喚或攻擊擲骰時自動加入！）。`,
+                        "system"
+                    );
+                }
+            } else if (stat === "xp") {
+                c.xp = Math.max(0, c.xp + amount);
+                const need = c.level + 7;
+                if (c.xp >= need) {
+                    addChatMessage(
+                        "系統提示 · 經驗值已達升級門檻",
+                        `🌟 你的經驗值已累積至 <strong>${c.xp} / ${need} XP</strong>！當你在安全場所或大火旁進行<strong>【紮營 (Make Camp)】</strong>修整時，將自動為你結算並升至 Lv.${c.level + 1}！`,
+                        "system"
+                    );
+                }
+            }
+            renderAllUI();
+        }
+
+        function useInventoryItem(index) {
+            const item = gameState.character.inventory[index];
+            if (!item) return;
+
+            if (item.effect === "heal10") {
+                gameState.character.hp = Math.min(gameState.character.maxHp, gameState.character.hp + 10);
+                addChatMessage("系統 · 使用道具", `🧪 你飲下了一瓶母親希拉調配的<strong>治療藥水</strong>，溫潤的藥力瞬間修復了傷勢，生命值恢復 10 點（目前 HP: ${gameState.character.hp}/${gameState.character.maxHp}）。`, "system");
+                decrementItemCount(index, "治療藥水");
+            } else if (item.effect === "fireBoost") {
+                gameState.character.fightingFireBonus += 2;
+                if (!gameState.character.burningBrand.activeTags.includes("無視護甲")) {
+                    gameState.character.burningBrand.activeTags.push("無視護甲", "+1d6傷害");
+                }
+                addChatMessage("系統 · 使用道具", `🔥 你飲下了韋斯利與母親煉製的<strong>【聖火強化藥劑】</strong>！銀色祝聖流光竄入黑曜石戒，下一次燃燒之劍攻擊將獲得 <strong>+1d6 傷害且無視敵人物理護甲</strong>！`, "system");
+                decrementItemCount(index, "聖火強化藥劑");
+            } else if (item.effect === "coldResist") {
+                gameState.character.armor += 1;
+                gameState.character.fightingFireBonus += 1;
+                addChatMessage("系統 · 使用道具", `❄️ 你飲下了<strong>【抗寒藥劑】</strong>！體表形成一層溫暖的微光屏障，面對冰霜與凋零環境時獲得 <strong>+1 護甲與 +1 檢定加值</strong>！`, "system");
+                decrementItemCount(index, "抗寒藥劑");
+            } else if (item.effect === "ration") {
+                addChatMessage("系統 · 消耗補給", `🍖 你食用了一份<strong>地城口糧</strong>，補充了體力。`, "system");
+                decrementItemCount(index, "地城口糧");
+            } else {
+                addChatMessage("系統 · 使用道具", `🛠️ 你使用了<strong>${item.name}</strong>。`, "system");
+            }
+            renderAllUI();
+        }
+
+        function decrementItemCount(index, baseName) {
+            const item = gameState.character.inventory[index];
+            const matchX = item.name.match(/x(\d+)/i);
+            const matchSlash = item.name.match(/\((\d+)\/(\d+)\)/);
+            if (matchX) {
+                const count = parseInt(matchX[1], 10) - 1;
+                if (count <= 0) gameState.character.inventory.splice(index, 1);
+                else item.name = `${baseName} x${count}`;
+            } else if (matchSlash) {
+                const cur = parseInt(matchSlash[1], 10) - 1;
+                const max = matchSlash[2];
+                if (cur <= 0) gameState.character.inventory.splice(index, 1);
+                else item.name = `${baseName} (${cur}/${max})`;
+            }
+        }
+
+        // =========================================================================
+        // 5. DUAL-MODE 2D COORDINATE MAP (TACTICAL RADAR (0,0) + CRESCENT ISLAND)
+        // =========================================================================
+        function setupCanvasResize() {
+            const canvas = document.getElementById("mapCanvas");
+            if (!canvas) return;
+            const resizeObserver = new ResizeObserver(() => {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    canvas.width = rect.width;
+                    canvas.height = rect.height;
+                    drawMap();
+                }
+            });
+            resizeObserver.observe(canvas.parentElement);
+
+            // Mouse Wheel Zoom
+            canvas.addEventListener("wheel", (e) => {
+                e.preventDefault();
+                const factor = e.deltaY < 0 ? 1.15 : 0.87;
+                zoomMap(factor);
+            }, { passive: false });
+
+            // Pointer Drag Pan (Works for both Mouse and Touch)
+            canvas.addEventListener("pointerdown", (e) => {
+                isDraggingMap = true;
+                mapDragMoved = false;
+                dragStartX = e.clientX - mapPanX;
+                dragStartY = e.clientY - mapPanY;
+                canvas.setPointerCapture(e.pointerId);
+            });
+
+            canvas.addEventListener("pointermove", (e) => {
+                if (!isDraggingMap) return;
+                const nx = e.clientX - dragStartX;
+                const ny = e.clientY - dragStartY;
+                if (Math.abs(nx - mapPanX) > 4 || Math.abs(ny - mapPanY) > 4) {
+                    mapDragMoved = true;
+                }
+                mapPanX = nx;
+                mapPanY = ny;
+                drawMap();
+            });
+
+            canvas.addEventListener("pointerup", (e) => {
+                isDraggingMap = false;
+                canvas.releasePointerCapture(e.pointerId);
+                if (!mapDragMoved) {
+                    handleCanvasClick(e);
+                }
+            });
+        }
+
+        function zoomMap(factor) {
+            mapZoom = Math.max(0.6, Math.min(4.0, mapZoom * factor));
+            drawMap();
+        }
+
+        function resetMapView() {
+            mapZoom = 1.0;
+            mapPanX = 0;
+            mapPanY = 0;
+            drawMap();
+        }
+
+        function setMapMode(mode) {
+            mapMode = mode;
+            resetMapView();
+            const btnTac = document.getElementById("btnModeTactical");
+            const btnWld = document.getElementById("btnModeWorld");
+            const desc = document.getElementById("mapOverlayDesc");
+
+            if (mode === "tactical") {
+                btnTac.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-orange-600 text-white shadow";
+                btnWld.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-800 text-slate-300 hover:bg-slate-700";
+                desc.innerText = "可滾輪/按鈕縮放、拖曳平移。點擊目標可查看座標與備註。";
+            } else {
+                btnWld.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-orange-600 text-white shadow";
+                btnTac.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-slate-800 text-slate-300 hover:bg-slate-700";
+                desc.innerText = "新月島區域戰略圖：可縮放拖曳，點擊各據點可查看情勢或移動。";
+            }
+            document.getElementById("mapEntityTooltip").classList.add("hidden");
+            drawMap();
+        }
+
+        function drawMap() {
+            const canvas = document.getElementById("mapCanvas");
+            if (!canvas) return;
+            const ctx = canvas.getContext("2d");
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            if (mapMode === "tactical") {
+                drawTacticalRadarMap(ctx, w, h);
+            } else {
+                drawWorldIslandMap(ctx, w, h);
+            }
+        }
+
+        function drawTacticalRadarMap(ctx, w, h) {
+            const cx = w / 2 + mapPanX;
+            const cy = h / 2 + mapPanY;
+            const scale = (Math.min(w, h) / 140) * mapZoom;
+
+            ctx.fillStyle = "#090d16";
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.lineWidth = 1;
+            for (let ft = -120; ft <= 120; ft += 10) {
+                const gx = cx + ft * scale;
+                const gy = cy - ft * scale;
+
+                ctx.strokeStyle = ft === 0 ? "rgba(249, 115, 22, 0.45)" : "rgba(51, 65, 85, 0.35)";
+                ctx.beginPath();
+                ctx.moveTo(gx, 0);
+                ctx.lineTo(gx, h);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(0, gy);
+                ctx.lineTo(w, gy);
+                ctx.stroke();
+            }
+
+            const rings = [
+                { r: 10, label: "10ft [及遠]", color: "rgba(249, 115, 22, 0.35)" },
+                { r: 30, label: "30ft [短程]", color: "rgba(56, 189, 248, 0.22)" },
+                { r: 60, label: "60ft [遠程]", color: "rgba(148, 163, 184, 0.16)" }
+            ];
+            rings.forEach(ring => {
+                ctx.beginPath();
+                ctx.arc(cx, cy, ring.r * scale, 0, Math.PI * 2);
+                ctx.strokeStyle = ring.color;
+                ctx.setLineDash([4, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = ring.color;
+                ctx.font = "10px 'JetBrains Mono', monospace";
+                ctx.fillText(ring.label, cx + 4, cy - ring.r * scale + 11);
+            });
+
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "bold 11px 'Noto Sans TC', sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("北 (+Y)", w / 2, 16);
+            ctx.fillText("南 (-Y)", w / 2, h - 8);
+            ctx.textAlign = "left";
+            ctx.fillText("西 (-X)", 10, h / 2 - 6);
+            ctx.textAlign = "right";
+            ctx.fillText("東 (+X)", w - 10, h / 2 - 6);
+
+            const entities = gameState.world.tacticalEntities || [];
+            entities.forEach((ent, idx) => {
+                const clampedX = Math.max(-90, Math.min(90, ent.x));
+                const clampedY = Math.max(-90, Math.min(90, ent.y));
+                const px = cx + clampedX * scale;
+                const py = cy - clampedY * scale;
+
+                ent._screenX = px;
+                ent._screenY = py;
+
+                if (ent.type === "enemy") {
+                    ctx.beginPath();
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(px, py);
+                    ctx.strokeStyle = "rgba(239, 68, 68, 0.28)";
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                const radius = ent.type === "pc" ? 10 : 7.5;
+                ctx.arc(px, py, radius, 0, Math.PI * 2);
+
+                if (ent.type === "pc") {
+                    ctx.fillStyle = "#f97316";
+                    ctx.shadowColor = "#ef4444";
+                    ctx.shadowBlur = 12;
+                } else if (ent.type === "ally") {
+                    ctx.fillStyle = "#3b82f6";
+                    ctx.shadowBlur = 0;
+                } else if (ent.type === "enemy") {
+                    ctx.fillStyle = "#ef4444";
+                    ctx.shadowColor = "#ef4444";
+                    ctx.shadowBlur = 8;
+                } else {
+                    ctx.fillStyle = "#a855f7";
+                    ctx.shadowBlur = 0;
+                }
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "#ffffff";
+                ctx.stroke();
+
+                ctx.font = "bold 11px 'Noto Sans TC', sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillStyle = ent.type === "enemy" ? "#fca5a5" : ent.type === "ally" ? "#93c5fd" : ent.type === "pc" ? "#fdba74" : "#d8b4fe";
+                // Alternate label vertical offset slightly for close allies/PC so text never collides
+                const labelYOffset = (ent.id === "pc") ? (radius + 13) : (idx % 2 === 0 ? -radius - 6 : -radius - 16);
+                ctx.fillText(`${ent.name} (${ent.x}, ${ent.y})`, px, py + labelYOffset);
+            });
+        }
+
+        function drawWorldIslandMap(ctx, w, h) {
+            ctx.save();
+            const grad = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, Math.max(w, h) * 0.7);
+            grad.addColorStop(0, "#0f2942");
+            grad.addColorStop(1, "#061220");
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.translate(w / 2 + mapPanX, h / 2 + mapPanY);
+            ctx.scale(mapZoom, mapZoom);
+            ctx.translate(-w / 2, -h / 2);
+
+            ctx.beginPath();
+            ctx.moveTo(w * 0.25, h * 0.15);
+            ctx.quadraticCurveTo(w * 0.65, h * 0.08, w * 0.85, h * 0.42);
+            ctx.quadraticCurveTo(w * 0.75, h * 0.85, w * 0.40, h * 0.88);
+            ctx.quadraticCurveTo(w * 0.28, h * 0.72, w * 0.38, h * 0.50);
+            ctx.quadraticCurveTo(w * 0.20, h * 0.35, w * 0.25, h * 0.15);
+            ctx.closePath();
+            ctx.fillStyle = "rgba(30, 58, 47, 0.75)";
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "rgba(74, 222, 128, 0.35)";
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(w * 0.16, h * 0.62, 24, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(127, 29, 29, 0.7)";
+            ctx.fill();
+            ctx.strokeStyle = "rgba(248, 113, 113, 0.5)";
+            ctx.stroke();
+
+            const nodes = gameState.world.worldNodes;
+            ctx.strokeStyle = "rgba(148, 163, 184, 0.3)";
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            const findN = id => nodes.find(n => n.id === id);
+            const nWind = findN("windward"), nStone = findN("stoneheart"), nRock = findN("rockbreak_forge"), nTara = findN("taramos"), nMono = findN("monolith");
+            if (nWind && nStone && nRock && nTara) {
+                ctx.moveTo(w * (nWind.x / 100), h * (nWind.y / 100));
+                ctx.lineTo(w * (nStone.x / 100), h * (nStone.y / 100));
+                ctx.lineTo(w * (nRock.x / 100), h * (nRock.y / 100));
+                ctx.moveTo(w * (nStone.x / 100), h * (nStone.y / 100));
+                ctx.lineTo(w * (nTara.x / 100), h * (nTara.y / 100));
+                ctx.moveTo(w * (nStone.x / 100), h * (nStone.y / 100));
+                ctx.lineTo(w * (nMono.x / 100), h * (nMono.y / 100));
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            nodes.forEach(node => {
+                const rawX = w * (node.x / 100);
+                const rawY = h * (node.y / 100);
+                node._screenX = (rawX - w / 2) * mapZoom + w / 2 + mapPanX;
+                node._screenY = (rawY - h / 2) * mapZoom + h / 2 + mapPanY;
+
+                const isCurrent = gameState.world.currentNodeId === node.id;
+
+                if (isCurrent) {
+                    ctx.beginPath();
+                    ctx.arc(rawX, rawY, 18, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(249, 115, 22, 0.35)";
+                    ctx.fill();
+                }
+
+                ctx.beginPath();
+                ctx.arc(rawX, rawY, 11, 0, Math.PI * 2);
+                ctx.fillStyle = node.color;
+                ctx.fill();
+                ctx.lineWidth = isCurrent ? 3 : 1.5;
+                ctx.strokeStyle = isCurrent ? "#ffffff" : "#0f172a";
+                ctx.stroke();
+
+                ctx.font = "13px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(node.icon, rawX, rawY);
+
+                ctx.font = isCurrent ? "bold 12px 'Noto Sans TC'" : "11px 'Noto Sans TC'";
+                ctx.fillStyle = isCurrent ? "#fdba74" : "#e2e8f0";
+                ctx.fillText(node.name, rawX, rawY + 20);
+            });
+            ctx.restore();
+        }
+
+        function handleCanvasClick(e) {
+            const canvas = document.getElementById("mapCanvas");
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            const tooltip = document.getElementById("mapEntityTooltip");
+
+            if (mapMode === "tactical") {
+                const clicked = gameState.world.tacticalEntities.find(ent => {
+                    const dx = (ent._screenX || 0) - clickX;
+                    const dy = (ent._screenY || 0) - clickY;
+                    return Math.sqrt(dx * dx + dy * dy) < 18;
+                });
+                if (clicked) {
+                    const dist = Math.round(Math.sqrt(clicked.x * clicked.x + clicked.y * clicked.y));
+                    tooltip.classList.remove("hidden");
+                    tooltip.innerHTML = `
+                        <div class="font-bold text-orange-300 flex justify-between items-center gap-4">
+                            <span>${clicked.name}</span>
+                            <span class="font-mono-code text-[11px] bg-slate-900 px-1.5 py-0.5 rounded">(${clicked.x}, ${clicked.y}) · 距離 ${dist}ft</span>
+                        </div>
+                        <p class="text-slate-300 text-[11px] mt-1">${clicked.note || "無特別備註"}</p>
+                    `;
+                } else {
+                    tooltip.classList.add("hidden");
+                }
+            } else {
+                const clickedNode = gameState.world.worldNodes.find(n => {
+                    const dx = (n._screenX || 0) - clickX;
+                    const dy = (n._screenY || 0) - clickY;
+                    return Math.sqrt(dx * dx + dy * dy) < 22;
+                });
+                if (clickedNode) {
+                    tooltip.classList.remove("hidden");
+                    tooltip.innerHTML = `
+                        <div class="font-bold text-amber-300 flex justify-between items-center gap-3">
+                            <span>${clickedNode.icon} ${clickedNode.name}</span>
+                            <button onclick="travelToWorldNode('${clickedNode.id}')" class="bg-orange-600 hover:bg-orange-500 text-white px-2 py-0.5 rounded text-[10px] font-bold">前往此處</button>
+                        </div>
+                        <p class="text-slate-300 text-[11px] mt-1">${clickedNode.desc}</p>
+                    `;
+                } else {
+                    tooltip.classList.add("hidden");
+                }
+            }
+        }
+
+        function travelToWorldNode(nodeId) {
+            const node = gameState.world.worldNodes.find(n => n.id === nodeId);
+            if (!node) return;
+            gameState.world.currentNodeId = node.id;
+            gameState.world.currentLocationName = node.name;
+            advanceWorldClock(4);
+            addChatMessage("系統 · 區域移動", `🗺️ 你率領小隊花費 4 小時跋涉，抵達了<strong>【${node.name}】</strong>（${node.desc}）。世界各區的時間與惡兆也隨之同步推進。`, "system");
+            document.getElementById("mapEntityTooltip").classList.add("hidden");
+            renderAllUI();
+        }
+
+        function shiftTacticalOrigin(moveX, moveY, dirLabel) {
+            gameState.world.facing = dirLabel;
+            gameState.world.tacticalEntities.forEach(ent => {
+                if (ent.id !== "pc") {
+                    ent.x -= moveX;
+                    ent.y -= moveY;
+                }
+            });
+            advanceWorldClock(0.1);
+            renderAllUI();
+        }
+
+        function renderTacticalEntitiesBar() {
+            const bar = document.getElementById("tacticalEntitiesBar");
+            if (!bar) return;
+
+            bar.innerHTML = gameState.world.tacticalEntities.map(ent => {
+                const badgeColor = ent.type === "enemy" ? "bg-red-950/80 border-red-700/60 text-red-300" :
+                                   ent.type === "ally" ? "bg-blue-950/80 border-blue-700/60 text-blue-300" :
+                                   ent.type === "pc" ? "bg-orange-950/80 border-orange-600/70 text-orange-300" :
+                                   "bg-purple-950/80 border-purple-700/60 text-purple-300";
+                return `
+                    <span class="px-2 py-0.5 rounded-md border shrink-0 ${badgeColor}" title="${ent.note}">
+                        ${ent.name}: (${ent.x},${ent.y})
+                    </span>
+                `;
+            }).join("");
+        }
+
+        // =========================================================================
+        // 6. WORLD CLOCK & SYNCHRONIZED REGION PROGRESSION
+        // =========================================================================
+        function advanceWorldClock(hours) {
+            const totalMinutes = Math.round(hours * 60);
+            gameState.world.minute += totalMinutes;
+            while (gameState.world.minute >= 60) {
+                gameState.world.minute -= 60;
+                gameState.world.hour += 1;
+            }
+            while (gameState.world.hour >= 24) {
+                gameState.world.hour -= 24;
+                gameState.world.day += 1;
+            }
+            renderAllUI();
+        }
+
+        // =========================================================================
+        // 7. DICE ENGINE & MOVE RESOLUTION (2D6 + MOD + DAMAGE)
+        // =========================================================================
+        function roll2d6(mod) {
+            const d1 = Math.floor(Math.random() * 6) + 1;
+            const d2 = Math.floor(Math.random() * 6) + 1;
+            const total = d1 + d2 + mod;
+            let tier = "failure";
+            let label = "失敗 (6-) · 標記 +1 XP";
+            if (total >= 12) { tier = "critical"; label = "卓越成功 (12+)"; }
+            else if (total >= 10) { tier = "success"; label = "完全成功 (10+)"; }
+            else if (total >= 7) { tier = "partial"; label = "部分成功 (7-9)"; }
+            return { d1, d2, mod, total, tier, label };
+        }
+
+        function rollDie(sides) {
+            return Math.floor(Math.random() * sides) + 1;
+        }
+
+        function detectMoveFromText(text) {
+            const t = text.toLowerCase();
+            if (t.includes("予我燃油") || t.includes("慾望之炎") || t.includes("燃料")) {
+                return { moveKey: "give_me_fuel", moveName: "予我燃油，予我烈火", stat: "NONE" };
+            }
+            if (t.includes("召喚") && (t.includes("劍") || t.includes("火刃"))) {
+                return { moveKey: "burning_brand", moveName: "召喚燃燒之劍 (Burning Brand)", stat: "CON" };
+            }
+            if (t.includes("振火神通") || t.includes("控火") || t.includes("引爆")) {
+                return { moveKey: "zuko_style", moveName: "振火神通 (Zuko Style)", stat: "WIS" };
+            }
+            if (t.includes("徒手鎔鑄") || t.includes("鍛造") || t.includes("熔煉") || t.includes("軟化")) {
+                return { moveKey: "hand_crafted", moveName: "徒手鎔鑄 (Hand Crafted)", stat: "INT" };
+            }
+            if (t.includes("煽動") || t.includes("演講")) {
+                return { moveKey: "firebrand", moveName: "煽動者 (Firebrand)", stat: "CHA" };
+            }
+            if (t.includes("紮營") || t.includes("休息")) {
+                return { moveKey: "make_camp", moveName: "紮營 (Make Camp)", stat: "NONE" };
+            }
+            if (t.includes("投擲") || t.includes("火龍") || t.includes("射擊") || t.includes("遠程")) {
+                return { moveKey: "volley_int", moveName: "聖火投擲/射擊 (Volley)", stat: "INT" };
+            }
+            if (t.includes("砍") || t.includes("刺") || t.includes("斬") || t.includes("劈") || t.includes("突襲") || t.includes("攻擊") || t.includes("殺")) {
+                return { moveKey: "hack_and_slash_int", moveName: "聖火砍劈 (Hack & Slash)", stat: "INT" };
+            }
+            if (t.includes("觀察") || t.includes("審視") || t.includes("調查") || t.includes("搜") || t.includes("看")) {
+                return { moveKey: "discern_realities", moveName: "審視現狀 (Discern Realities)", stat: "WIS" };
+            }
+            if (t.includes("回憶") || t.includes("回想") || t.includes("見聞") || t.includes("知道")) {
+                return { moveKey: "spout_lore", moveName: "憶述見聞 (Spout Lore)", stat: "INT" };
+            }
+            if (t.includes("談判") || t.includes("威脅") || t.includes("要求") || t.includes("說服") || t.includes("欺騙")) {
+                return { moveKey: "parley", moveName: "談判 (Parley)", stat: "CHA" };
+            }
+            if (t.includes("保衛") || t.includes("掩護") || t.includes("擋在")) {
+                return { moveKey: "defend", moveName: "保衛 (Defend)", stat: "CON" };
+            }
+            if (t.includes("躲") || t.includes("閃") || t.includes("潛行") || t.includes("逃") || t.includes("衝")) {
+                return { moveKey: "defy_danger_dex", moveName: "面對危險 (迅速行動)", stat: "DEX" };
+            }
+            if (t.includes("暗號") || t.includes("敲擊") || t.includes("計策") || t.includes("偽裝")) {
+                return { moveKey: "defy_danger_int", moveName: "面對危險 (臨機應變)", stat: "INT" };
+            }
+            return { moveKey: "none", moveName: "敘事推進 / 角色互動", stat: "NONE" };
+        }
+
+        // =========================================================================
+        // 8. SUBMIT ACTION & AI / LOCAL GM RESPONSE PIPELINE
+        // =========================================================================
+        async function submitAction() {
+            const input = document.getElementById("actionInput");
+            const text = input.value.trim();
+            if (!text) return;
+
+            const select = document.getElementById("moveSelect");
+            let selectedMoveKey = select.value;
+            let selectedMoveName = select.options[select.selectedIndex].text;
+            let statKey = select.options[select.selectedIndex].getAttribute("data-stat");
+
+            if (selectedMoveKey === "auto") {
+                const detected = detectMoveFromText(text);
+                selectedMoveKey = detected.moveKey;
+                selectedMoveName = detected.moveName;
+                statKey = detected.stat;
+            }
+
+            // 自動加值來自 GM 判定或【以火攻火】，不需玩家手動輸入
+            const autoBonus = gameState.character.fightingFireBonus || 0;
+            let rollData = null;
+            let dmgRoll = null;
+            let rollHtml = "";
+            let gmMechSummary = "";
+
+            if (selectedMoveKey === "make_camp") {
+                gameState.character.hp = gameState.character.maxHp;
+                gameState.character.burningBrand.uses = 3;
+                advanceWorldClock(6);
+                let levelUpNote = "";
+                const needXp = gameState.character.level + 7;
+                if (gameState.character.xp >= needXp) {
+                    gameState.character.xp -= needXp;
+                    gameState.character.level += 1;
+                    levelUpNote = `<br>🔥 <strong>靈魂昇華：</strong>你在營火旁冥想反思，扣除 ${needXp} XP，正式升至 <strong>等級 ${gameState.character.level}</strong>！請在敘述中向 GM 宣告你想提升的屬性與新進階動作（可開啟上方「規則圖鑑」查閱）。`;
+                }
+                rollHtml = `<div class="mt-2 p-2 rounded-lg bg-emerald-950/70 border border-emerald-700/50 text-xs text-emerald-200">⛺ <strong>人類燔祭者紮營：</strong>在大火旁休息 6 小時，生命值完全恢復至 ${gameState.character.maxHp}/${gameState.character.maxHp}，燃燒之劍充能完畢 (3/3)！${levelUpNote}</div>`;
+                gmMechSummary = "玩家執行了紮營，HP已滿，時間推進6小時。";
+            } else if (selectedMoveKey === "give_me_fuel") {
+                rollHtml = `<div class="mt-2 p-2 rounded-lg bg-purple-950/70 border border-purple-700/50 text-xs text-purple-200">👁️ <strong>觸發【予我燃油，予我烈火】：</strong>無須擲骰，目標必須如實回答其慾望之炎的真正燃料！</div>`;
+                gmMechSummary = "玩家發動【予我燃油，予我烈火】（免擲骰），請讓目標NPC誠實吐露其內心最深處的慾望燃料與弱點。";
+            } else if (statKey && statKey !== "NONE") {
+                const statObj = gameState.character.stats[statKey];
+                const baseMod = statObj ? (statObj.debility ? statObj.mod - 1 : statObj.mod) : 0;
+                const totalMod = baseMod + autoBonus;
+                rollData = roll2d6(totalMod);
+
+                // 消耗已使用的自動加值
+                gameState.character.fightingFireBonus = 0;
+
+                if (rollData.tier === "failure") {
+                    gameState.character.xp += 1;
+                }
+
+                if ((selectedMoveKey.includes("hack_and_slash") || selectedMoveKey.includes("volley")) && rollData.total >= 7) {
+                    dmgRoll = rollDie(8);
+                    if (selectedMoveKey.includes("_int") && gameState.character.burningBrand.uses > 0) {
+                        gameState.character.burningBrand.uses -= 1;
+                    }
+                }
+
+                if (selectedMoveKey === "burning_brand" && rollData.total >= 7) {
+                    gameState.character.burningBrand.uses = 3;
+                }
+
+                const colorClass = rollData.tier === "critical" || rollData.tier === "success" ? "text-emerald-400 border-emerald-700/60 bg-emerald-950/40" :
+                                   rollData.tier === "partial" ? "text-amber-300 border-amber-700/60 bg-amber-950/40" :
+                                   "text-red-400 border-red-700/60 bg-red-950/40";
+
+                const modSign = totalMod >= 0 ? `+${totalMod}` : `${totalMod}`;
+                const bonusNote = autoBonus !== 0 ? ` (含自動加值+${autoBonus})` : "";
+                rollHtml = `
+                    <div class="mt-2 p-2.5 rounded-xl border ${colorClass} font-mono-code text-xs space-y-1">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold">${selectedMoveName}</span>
+                            <span class="px-1.5 py-0.5 rounded bg-black/40 font-bold">${rollData.label}</span>
+                        </div>
+                        <div class="text-slate-200">
+                            🎲 2d6 (${rollData.d1} + ${rollData.d2}) ${modSign} (${statKey}${bonusNote}) = <strong class="text-base">${rollData.total}</strong>
+                            ${dmgRoll !== null ? ` | 💥 傷害骰 1d8 = <strong class="text-orange-400 text-base">${dmgRoll}</strong> 點` : ""}
+                        </div>
+                    </div>
+                `;
+
+                gmMechSummary = `觸發動作【${selectedMoveName}】，擲骰 2d6(${rollData.d1},${rollData.d2})${modSign} = ${rollData.total} [${rollData.label}]。${dmgRoll !== null ? `已擲出基礎傷害 1d8 = ${dmgRoll} 點。` : ""}`;
+            } else {
+                gmMechSummary = "玩家進行敘事、對話或戰術部署（未觸發擲骰）。";
+            }
+
+            const userHtml = `<p class="leading-relaxed">${text.replace(/\n/g, "<br>")}</p>${rollHtml}`;
+            addChatMessage("伊格尼斯 (你)", userHtml, "user");
+
+            input.value = "";
+            select.value = "auto";
+            advanceWorldClock(0.25);
+            renderAllUI();
+
+            await generateGMResponse(text, gmMechSummary, rollData, dmgRoll);
+        }
+
+        async function generateGMResponse(userActionText, gmMechSummary, rollData, dmgRoll) {
+            const typing = document.getElementById("typingIndicator");
+            typing.classList.remove("hidden");
+            scrollToBottom();
+
+            if (!apiKey) {
+                setTimeout(() => {
+                    typing.classList.add("hidden");
+                    const localResult = runBuiltInGMEngine(userActionText, gmMechSummary, rollData, dmgRoll);
+                    applyGMStateUpdates(localResult.stateUpdates);
+                    addChatMessage("系統 GM (內建劇本引擎)", localResult.narrativeHtml, "gm");
+                    renderSuggestedActions(localResult.suggestions);
+                    autoAppendTurnToKnowledgeSource(userActionText, gmMechSummary, localResult.plainText || localResult.narrativeHtml.replace(/<[^>]+>/g, ""));
+                }, 650);
+                return;
+            }
+
+            const activeSourcesText = (gameState.knowledgeSources || [])
+                .filter(s => s.enabled)
+                .map((s, idx) => `【來源 ${idx + 1}：${s.title} (${s.type})】\n${s.content}`)
+                .join("\n\n");
+
+            const canonicalSnapshot = {
+                character: gameState.character,
+                companions: gameState.companions,
+                world: {
+                    day: gameState.world.day,
+                    hour: gameState.world.hour,
+                    minute: gameState.world.minute,
+                    currentLocationName: gameState.world.currentLocationName,
+                    facing: gameState.world.facing,
+                    tacticalEntities: gameState.world.tacticalEntities,
+                    regionsSync: gameState.world.regionsSync
+                }
+            };
+
+            const systemPrompt = `你是《地城世界》(Dungeon World) 單人 TRPG 的專業主持人 (GM)。
+玩家扮演「伊格尼斯 (Ignis)」，等級 ${gameState.character.level} 的人類燔祭者 (Immolator)。
+目前劇情正處於【第三章：風嘯山谷與熔爐關口（續）】，請直接從火矮人打開熔爐關口鐵門的情節無縫續寫。
+
+請嚴格遵守以下防失憶與敘事準則：
+1. 【啟用的知識庫來源 (NotebookLM Grounding Sources)】：
+${activeSourcesText}
+
+2. 【當前絕對角色狀態、物品欄與座標快照】：
+${JSON.stringify(canonicalSnapshot, null, 2)}
+
+3. 【你的敘事風格（承接第 1~3 章紀錄）】：
+- 使用第二人稱「你」與「伊格尼斯」稱呼玩家。
+- 包含豐富的感官描寫（**視覺**、**聽覺**、**嗅覺/觸覺**）。
+- 嚴格遵守以伊格尼斯為原點 (0, 0) 的平面座標系（西-X、東+X、北+Y、南為-Y，單位英尺 ft.）。
+- 角色狀態欄、HP、XP、燃燒之劍次數與標籤、異常狀態與金幣全由你透過下方 JSON 的 stateUpdates 欄位自動控制更新。
+- 避免上帝視角：regionsSync 僅記錄「伊格尼斯目前已親身得知或聽聞的情報」，不要顯示任何百分比進度；當玩家在劇情中獲得關於某區域的新情報時，可透過 stateUpdates.regionsSync 更新。
+
+4. 【強制回傳 JSON 格式】：
+請務必回傳純 JSON 格式（不要加 markdown code fence 以外的雜訊），結構如下：
+{
+  "narrative": "完整且充滿沉浸感的 Markdown 劇情與戰鬥描寫（包含視覺、聽覺、嗅覺與座標變化說明，結尾詢問玩家接下來要做什麼）",
+  "suggestions": [
+    "建議行動1（簡短一句話，點擊可直接填入）",
+    "建議行動2",
+    "建議行動3"
+  ],
+  "stateUpdates": {
+    "hpDelta": 0,
+    "xpDelta": 0,
+    "goldDelta": 0,
+    "brandUses": ${gameState.character.burningBrand.uses},
+    "debilitiesAdd": [],
+    "debilitiesRemove": [],
+    "locationName": "${gameState.world.currentLocationName}",
+    "facing": "${gameState.world.facing}",
+    "addItems": [],
+    "removeItems": [],
+    "tacticalEntities": [
+      { "id": "pc", "name": "伊格尼斯 (你)", "x": 0, "y": 0, "type": "pc", "note": "狀態簡述" }
+    ]
+  }
+}`;
+
+            const contents = gameState.history.slice(-8).map(m => ({
+                role: m.role === "user" ? "user" : "model",
+                parts: [{ text: m.text }]
+            }));
+
+            contents.push({
+                role: "user",
+                parts: [{ text: `玩家行動：${userActionText}\n系統擲骰與機制判定：${gmMechSummary}` }]
+            });
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents,
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                        generationConfig: {
+                            temperature: 0.75,
+                            responseMimeType: "application/json"
+                        }
+                    })
+                });
+
+                if (!res.ok) {
+                    throw new Error(`API 狀態碼 ${res.status}，請檢查 API Key 或切換模型。`);
+                }
+
+                const data = await res.json();
+                const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+                let parsed;
+                try {
+                    parsed = JSON.parse(rawText);
+                } catch (jsonErr) {
+                    const cleaned = rawText.replace(/```json|```/g, "").trim();
+                    parsed = JSON.parse(cleaned);
+                }
+
+                gameState.history.push({ role: "user", text: `${userActionText} (${gmMechSummary})` });
+                gameState.history.push({ role: "model", text: parsed.narrative || rawText });
+
+                typing.classList.add("hidden");
+
+                if (parsed.stateUpdates) {
+                    applyGMStateUpdates(parsed.stateUpdates);
+                }
+
+                const formattedHtml = formatMarkdownToHtml(parsed.narrative || "命運的火光閃爍...");
+                addChatMessage(`系統 GM (${selectedModel})`, formattedHtml, "gm");
+
+                if (Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0) {
+                    renderSuggestedActions(parsed.suggestions);
+                }
+
+                autoAppendTurnToKnowledgeSource(userActionText, gmMechSummary, parsed.narrative || rawText);
+
+            } catch (err) {
+                typing.classList.add("hidden");
+                console.error("Gemini API Error:", err);
+                const fallback = runBuiltInGMEngine(userActionText, gmMechSummary, rollData, dmgRoll);
+                applyGMStateUpdates(fallback.stateUpdates);
+                addChatMessage("系統 GM (API 異常，已自動切換內建引擎)", `<p class="text-[11px] text-amber-400 mb-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>連線提示：${err.message}</p>` + fallback.narrativeHtml, "gm");
+                renderSuggestedActions(fallback.suggestions);
+            }
+        }
+
+        function applyGMStateUpdates(updates) {
+            if (!updates) return;
+            const c = gameState.character;
+            const w = gameState.world;
+
+            if (typeof updates.hpDelta === "number" && updates.hpDelta !== 0) {
+                modifyStat("hp", updates.hpDelta);
+            }
+            if (typeof updates.xpDelta === "number" && updates.xpDelta !== 0) {
+                modifyStat("xp", updates.xpDelta);
+            }
+            if (typeof updates.goldDelta === "number" && updates.goldDelta !== 0) {
+                c.gold = Math.max(0, c.gold + updates.goldDelta);
+            }
+            if (typeof updates.brandUses === "number") {
+                c.burningBrand.uses = Math.max(0, Math.min(6, updates.brandUses));
+            }
+            if (Array.isArray(updates.debilitiesAdd)) {
+                updates.debilitiesAdd.forEach(k => {
+                    if (c.stats[k]) c.stats[k].debility = true;
+                });
+            }
+            if (Array.isArray(updates.debilitiesRemove)) {
+                updates.debilitiesRemove.forEach(k => {
+                    if (c.stats[k]) c.stats[k].debility = false;
+                });
+            }
+            if (updates.locationName) {
+                w.currentLocationName = updates.locationName;
+            }
+            if (updates.facing) {
+                w.facing = updates.facing;
+            }
+            if (Array.isArray(updates.addItems)) {
+                updates.addItems.forEach(it => {
+                    if (typeof it === "string") {
+                        c.inventory.push({ name: it, category: "關鍵信物與工具", tags: "戰利品/劇情獲得", weight: 0, usable: false, lore: `於【${w.currentLocationName}】冒險途中獲得的物品。` });
+                    } else if (it && it.name) {
+                        c.inventory.push({
+                            name: it.name,
+                            category: it.category || "關鍵信物與工具",
+                            tags: it.tags || "劇情獲得",
+                            weight: it.weight || 0,
+                            usable: !!it.usable,
+                            lore: it.lore || `於【${w.currentLocationName}】冒險途中獲得的物品。`
+                        });
+                    }
+                });
+            }
+            if (Array.isArray(updates.removeItems)) {
+                updates.removeItems.forEach(remName => {
+                    const idx = c.inventory.findIndex(i => i.name.includes(remName));
+                    if (idx !== -1) c.inventory.splice(idx, 1);
+                });
+            }
+            if (Array.isArray(updates.tacticalEntities) && updates.tacticalEntities.length > 0) {
+                w.tacticalEntities = updates.tacticalEntities;
+            }
+            if (Array.isArray(updates.regionsSync) && updates.regionsSync.length > 0) {
+                w.regionsSync = updates.regionsSync;
+            }
+            renderAllUI();
+        }
+
+        function runBuiltInGMEngine(userText, mechSummary, rollData, dmgRoll) {
+            const t = userText.toLowerCase();
+            let narrative = "";
+            let suggestions = [];
+            const updates = {
+                hpDelta: 0,
+                xpDelta: 0,
+                tacticalEntities: JSON.parse(JSON.stringify(gameState.world.tacticalEntities))
+            };
+
+            if (t.includes("暗號") || t.includes("兩短一重") || t.includes("回音壁") || t.includes("敲")) {
+                narrative = `**【劇情敘事：坑道深處的鐵之回音】**\n\n**視覺：** 你不動聲色地走近座標 \`(-15, -25)\` 的坑道回音壁，趁著前方帶路的火矮人守衛 B 背對你們的瞬間，你以聖火輕盾的金屬邊緣敲擊岩壁。\n\n**聽覺：** **「噹、噹——咚！！」** 兩聲短促、一聲沈重的金屬震鳴順著中空的冷卻管線傳向核心礦井深處。約莫三秒後，遠方 \`(0, -60)\` 的厚重防爆鐵門後方傳來了同樣節奏的敲擊回應——**工頭琳薩．克蘭（Linsa Crane）**還活著，而且收到信號了！\n\n然而，前方 \`(5, -10)\` 的火矮人守衛 B 猛地停下腳步，岩漿般的雙眼疑惑地轉過頭：「喂！你們在後面敲什麼鬼東西？」\n\n**【戰場座標更新】**\n- **伊格尼斯 (你)**：\`(0, 0)\` — 面向南方 \`(-Y)\`，位於回音壁旁。\n- **火矮人守衛 B**：\`(5, -10)\` — 轉身起疑，握緊燃燒錘。\n- **核心礦井防爆門**：\`(0, -45)\` — 內部傳來齒輪鬆動的聲音。`;
+                updates.locationName = "破岩鎮 - 核心礦井通道前";
+                updates.tacticalEntities = [
+                    { id: "pc", name: "伊格尼斯 (你)", x: 0, y: 0, type: "pc", note: "已發出兩短一重暗號" },
+                    { id: "mila", name: "米拉 (戰士)", x: -3, y: 2, type: "ally", note: "已解開麻繩，手按劍柄" },
+                    { id: "silas", name: "塞拉斯 (斥候)", x: 3, y: 2, type: "ally", note: "已搭上破甲箭" },
+                    { id: "magmin_b", name: "起疑的火矮人 B", x: 5, y: -10, type: "enemy", note: "HP 7 / 護甲 4，燃焰鮮血" },
+                    { id: "core_gate", name: "核心礦井防爆門", x: 0, y: -45, type: "object", note: "琳薩工頭正從內部開啟縫隙" }
+                ];
+                suggestions = [
+                    "發動【予我燃油，予我烈火】凝視火矮人守衛B的雙眼，逼問冰晶裝甲與我父親的下落",
+                    "掏出『餘燼之心』釋放極寒能量瞬間冷卻火矮人的黑曜岩重甲，再聯手米拉斬殺他",
+                    "施展【煽動者】欺騙火矮人：『琳薩工頭剛才想從內部偷襲，快去打開防爆門立功！』"
+                ];
+            } else if (t.includes("予我燃油") || t.includes("燃料")) {
+                narrative = `**【劇情敘事：熔岩靈魂的拷問】**\n\n**視覺：** 你那隻鮮紅如火的右眼在幽暗的熔爐隧道中驟然亮起，宛如深淵的紅星，死死鎖定了面前火矮人那雙流淌著岩漿的眼眸。\n\n**聽覺：** 在**【予我燃油，予我烈火】**的絕對權能下，火矮人全身的黑曜岩裝甲發出劇烈的震顫，他不由自主地開口，聲音如同熔鐵摩擦：\n「我們的燃料……是**『重返地表的霸權與神聖鍛造』**！火矮人之王**拉傑克．赤鋼（Rajak Redsteel）**與拜龍教達成了交易——我們幫他們將『地脈之血』鍛造成能承受龍息的冰晶裝甲，而巨龍孵化後將把破岩鎮賜予我們！至於那個帶著『燼火劍扣』的人類劍士（你的父親）……他因為試圖破壞一號熔爐，現在正被鎖在核心礦井底層的**『黑曜石地牢』**裡當作活體燃料！」\n\n你終於得知了父親的確切下落！`;
+                suggestions = [
+                    "趁火矮人失神之際，利用『餘燼之心』的寒氣粉碎他的護甲並突襲斬殺！",
+                    "命令米拉與塞拉斯立刻脫困，全速衝向 (-45) 處開啟的核心礦井防爆門",
+                    "審視現狀：觀察熔爐關口的冷卻管道是否有可以直接炸毀工廠的節點"
+                ];
+            } else if (rollData && (rollData.tier === "success" || rollData.tier === "critical")) {
+                narrative = `**【劇情敘事：紅蓮與鐵的裁決】**\n\n${mechSummary}\n\n**視覺與聽覺：** 你的行動如行雲流水般精準！紫紅色的聖火在隧道中轟然爆發，伴隨著米拉銀色長劍的側翼掩護與塞拉斯刁鑽的冷箭，眼前的阻礙被瞬間撕裂。火矮人身上堅達 4 點護甲的黑曜岩甲殼在劇烈的熱應力交鋒下崩裂出無數蛛網般的裂痕！\n\n**嗅覺：** 空氣中瀰漫著濃烈的硫磺與金屬汽化的焦香。前方核心礦井的防爆鐵門已經拉開了一道足以容納三人通過的縫隙，裡面傳來工頭**琳薩．克蘭**急促的呼喊：「是發出暗號的友軍嗎？快進來！拜龍教的『冰晶百夫長』正帶著改造礦工過來了！」`;
+                suggestions = [
+                    "率領米拉與塞拉斯閃入核心礦井防爆門，與工頭琳薩．克蘭會合！",
+                    "在進入鐵門前，發動【振火神通】引爆門外的硫磺管道封死追兵的路",
+                    "搜刮倒下火矮人的黑曜岩殘骸，準備之後用【徒手鎔鑄】強化裝備"
+                ];
+            } else if (rollData && rollData.tier === "partial") {
+                updates.hpDelta = -2;
+                narrative = `**【劇情敘事：伴隨代價的交鋒 (7-9)】**\n\n${mechSummary}\n\n**視覺與觸覺：** 你的聖火成功重創了目標，但火矮人特有的**【燃焰鮮血】**在受創瞬間如高壓熔岩般噴濺而出！儘管你及時舉起聖火輕盾格擋（減免 1 點護甲），灼熱的岩漿碎屑仍擦傷了你的前臂（承受 **2 點傷害**）。\n\n**聽覺：** 隧道深處響起了刺耳的警鐘聲！米拉大喝一聲替你擋住側翼，塞拉斯則指向南方的鐵門：「使者大人，防爆門開了，但我們必須在『硬闖過去承受煙霧嗆傷』或『消耗一瓶藥劑掩護撤退』之間做出抉擇！」`;
+                suggestions = [
+                    "咬牙忍受高熱，帶領米拉與塞拉斯全速衝進核心礦井防爆門",
+                    "趁受創怒火沸騰，揮動十呎毀亂火刃將火矮人徹底斬碎！",
+                    "命令塞拉斯射斷上方的冷卻水管製造蒸汽煙幕掩護我們進入礦井"
+                ];
+            } else {
+                narrative = `**【劇情敘事：破岩鎮的暗湧】**\n\n${mechSummary}\n\n**視覺與聽覺：** 熔爐關口內的岩漿流在溝渠中翻滾，將你、米拉與塞拉斯的影子拉得斜長。在你們前方 \`(0, -45)\` 處便是通往**核心礦井**的防爆大門，而四周的蒸氣管線正因為拜龍教強行抽取『地脈之血』而發出不堪負荷的哀鳴。\n\n你左手的黑曜石戒與包包裡的『餘燼之心』同時傳來規律的搏動，提醒著你父親與工頭琳薩就在礦井深處。伊格尼斯，你打算怎麼做？`;
+                suggestions = [
+                    "走向 (-15, -25) 的回音壁，敲擊『兩短一重』暗號聯繫工頭琳薩",
+                    "對帶路的火矮人守衛發動【予我燃油，予我烈火】，窺探父親的下落",
+                    "發動【審視現狀】仔細觀察熔爐關口的地脈抽取管線與守衛弱點"
+                ];
+            }
+
+            return {
+                narrativeHtml: formatMarkdownToHtml(narrative),
+                plainText: narrative,
+                suggestions,
+                stateUpdates: updates
+            };
+        }
+
+        // =========================================================================
+        // 9. CHAT STREAM & SUGGESTED CHIPS HELPER
+        // =========================================================================
+        function formatMarkdownToHtml(md) {
+            return md
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-orange-300 font-bold">$1</strong>')
+                .replace(/`(.*?)`/g, '<code class="bg-slate-950 text-sky-300 px-1.5 py-0.5 rounded font-mono-code text-[11px] border border-slate-800">$1</code>')
+                .replace(/\n/g, "<br>");
+        }
+
+        function addChatMessage(sender, htmlContent, type) {
+            const container = document.getElementById("chatHistory");
+            const div = document.createElement("div");
+
+            if (type === "user") {
+                div.className = "chat-message bg-gradient-to-br from-orange-950/60 to-slate-900 border border-orange-700/50 p-3 rounded-2xl rounded-tr-none ml-6 shadow-md";
+                div.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[11px] font-bold text-orange-400 flex items-center gap-1.5"><i class="fa-solid fa-fire"></i> ${sender}</span>
+                        <span class="text-[10px] font-mono-code text-slate-500">第${gameState.world.day}天 ${String(gameState.world.hour).padStart(2,'0')}:${String(gameState.world.minute).padStart(2,'0')}</span>
+                    </div>
+                    <div class="text-xs sm:text-sm text-slate-100 leading-relaxed">${htmlContent}</div>
+                `;
+            } else if (type === "gm") {
+                div.className = "chat-message bg-slate-950/90 border border-slate-800 p-3.5 rounded-2xl rounded-tl-none mr-4 shadow-lg";
+                div.innerHTML = `
+                    <div class="flex justify-between items-center mb-1.5 pb-1 border-b border-slate-800/80">
+                        <span class="text-[11px] font-bold text-amber-400 flex items-center gap-1.5"><i class="fa-solid fa-dice-d20 text-purple-400"></i> ${sender}</span>
+                        <span class="text-[10px] font-mono-code text-slate-500">${gameState.world.currentLocationName}</span>
+                    </div>
+                    <div class="text-xs sm:text-sm text-slate-200 leading-relaxed space-y-1">${htmlContent}</div>
+                `;
+            } else {
+                div.className = "chat-message bg-slate-900/90 border border-indigo-500/40 p-2.5 rounded-xl text-xs text-slate-300";
+                div.innerHTML = `
+                    <div class="font-bold text-indigo-300 mb-0.5 flex items-center gap-1"><i class="fa-solid fa-bolt"></i> ${sender}</div>
+                    <div>${htmlContent}</div>
+                `;
+            }
+
+            container.appendChild(div);
+            scrollToBottom();
+        }
+
+        function renderSuggestedActions(suggestions) {
+            const bar = document.getElementById("suggestedActionsBar");
+            if (!suggestions || suggestions.length === 0) return;
+            bar.innerHTML = suggestions.map(s => `
+                <button onclick="fillActionInput('${s.replace(/'/g, "\\'")}')" class="shrink-0 bg-slate-900 hover:bg-orange-950/80 text-slate-300 hover:text-orange-200 border border-slate-700 hover:border-orange-500/50 rounded-lg px-2.5 py-1 text-[11px] transition flex items-center gap-1">
+                    <i class="fa-solid fa-wand-magic-sparkles text-orange-400 text-[10px]"></i>
+                    <span class="truncate max-w-[220px]">${s}</span>
+                </button>
+            `).join("");
+        }
+
+        function fillActionInput(text) {
+            const input = document.getElementById("actionInput");
+            input.value = text;
+            input.focus();
+        }
+
+        function renderInitialWelcomeChat() {
+            const container = document.getElementById("chatHistory");
+            if (container.children.length > 0) return;
+
+            addChatMessage(
+                "系統 · 前情提要 (第 1~3 章記憶來源已掛載)",
+                `已完整載入<strong>伊格尼斯 (Lv.3 人類燔祭者)</strong> 的冒險進度：<br>
+                • <strong>石心鎮解放</strong>：你摧毀了巨石柱、斬殺教主格雷分身、撞開寒鐵箱解放地熱，獲得鎮郊莊園與 300G 現款（及 1400G 中央債權）。<br>
+                • <strong>第三章破岩鎮潛入</strong>：你率領戰士<strong>米拉</strong>與追跡者<strong>塞拉斯</strong>穿越風嘯山谷，以【以火攻火】十呎毀亂火環瞬殺哨兵與三頭地獄獵犬，奪取『晶牙墜飾』並偽裝押送俘虜進入熔爐關口。`,
+                "system"
+            );
+
+            addChatMessage(
+                "系統 GM · 第三章續寫：熔爐關口的火矮人",
+                `<strong>【當前場景：破岩鎮 —— 熔爐關口內部】</strong><br><br>
+                你傲慢地扯動麻繩，帶著假裝被俘虜的<strong>米拉</strong>與<strong>塞拉斯</strong>跨過消散的晶塵，成功騙過兩名身披黑曜岩重甲的<strong>火矮人 (Magmin)</strong> 守衛。沈重的關口鐵門在你們身後緩緩拉上，前方是通往<strong>「核心礦井」</strong>、冒著紅光與硫磺蒸氣的深邃隧道。<br><br>
+                塞拉斯先前提醒過你：若抵達礦道關口，對著回音壁 <code>(-15, -25)</code> 敲擊金屬<strong>「兩聲短促、一聲沈重」</strong>，便是工頭<strong>琳薩．克蘭</strong>留給友軍的暗號——意為<em>「此處有火，寒冬止步」</em>。<br><br>
+                <strong>伊格尼斯，聖火在你斗篷下沉默地燃燒，獵物已在你的圈套之中。你要做什麼？</strong>`,
+                "gm"
+            );
+
+            renderSuggestedActions([
+                "我走向 (-15, -25) 的坑道回音壁，用聖火輕盾敲擊『兩短一重』的暗號聯繫工頭琳薩",
+                "我對前方帶路的火矮人守衛B發動【予我燃油，予我烈火】，凝視他雙眼逼問我父親的下落",
+                "趁守衛轉身關門的空檔，暗示米拉與塞拉斯掙脫繩索，我用【燃燒之劍】突襲火矮人！"
+            ]);
+        }
+
+        function triggerQuickRecap() {
+            const c = gameState.character;
+            const w = gameState.world;
+            const entList = w.tacticalEntities.map(e => `• <strong>${e.name}</strong>: <code>(${e.x}, ${e.y})</code> — ${e.note}`).join("<br>");
+            addChatMessage(
+                "戰術雷達 · 即時座標與狀態總結",
+                `<strong>📍 地點：</strong>${w.currentLocationName}（面向：${w.facing}）<br>
+                <strong>🔥 狀態：</strong>HP ${c.hp}/${c.maxHp} | Lv.${c.level} (XP ${c.xp}/10) | 護甲 ${c.armor} | 燃燒之劍 ${c.burningBrand.uses}/3 次<br>
+                <strong>🎯 戰場相對座標 (以你為 0,0)：</strong><br>${entList}`,
+                "system"
+            );
+        }
+
+        function clearChatConfirm() {
+            document.getElementById("chatHistory").innerHTML = "";
+            renderInitialWelcomeChat();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById("chatHistory");
+            setTimeout(() => {
+                container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+            }, 40);
+        }
+
+        // =========================================================================
+        // 10. NOTEBOOK-LM STYLE SOURCE LIBRARY, CODEX & ARCHIVE EXPORT
+        // =========================================================================
+        function renderLoreDatabase() {
+            const sources = gameState.knowledgeSources || [];
+            const enabledSources = sources.filter(s => s.enabled);
+            const enabledCount = enabledSources.length;
+            const totalEnabledChars = enabledSources.reduce((acc, s) => acc + (s.content ? s.content.length : 0), 0);
+
+            const badge = document.getElementById("activeSourcesBadge");
+            if (badge) badge.innerText = enabledCount;
+            const countTxt = document.getElementById("sourcesCountText");
+            if (countTxt) countTxt.innerText = `${enabledCount} / ${sources.length} 啟用 (共 ${totalEnabledChars.toLocaleString()} 字 · 無上限)`;
+
+            const toggleEl = document.getElementById("autoSaveTurnSourceToggle");
+            if (toggleEl) toggleEl.checked = !!gameState.autoSaveTurnSource;
+
+            const listContainer = document.getElementById("sourcesListContainer");
+            if (listContainer) {
+                listContainer.innerHTML = sources.map(src => {
+                    const isSelected = src.id === selectedSourceId;
+                    const typeColor = src.type.includes("自動") ? "bg-emerald-950 text-emerald-300 border-emerald-700/50" :
+                                      src.type.includes("上傳") ? "bg-amber-950 text-amber-300 border-amber-700/50" :
+                                      "bg-indigo-950 text-indigo-300 border-indigo-700/50";
+                    return `
+                        <div onclick="selectKnowledgeSource('${src.id}')" class="cursor-pointer p-2.5 rounded-xl border transition flex items-start justify-between gap-2 ${
+                            isSelected ? "bg-slate-800/90 border-orange-500/60 shadow" : "bg-slate-900/70 border-slate-800 hover:border-slate-700"
+                        }">
+                            <div class="flex items-start gap-2 min-w-0">
+                                <input type="checkbox" ${src.enabled ? "checked" : ""} onclick="event.stopPropagation(); toggleSourceEnabled('${src.id}')" class="mt-1 accent-orange-500 rounded cursor-pointer" title="勾選以將此來源注入 AI GM 記憶">
+                                <div class="min-w-0">
+                                    <div class="font-bold text-slate-200 truncate">${src.title}</div>
+                                    <div class="flex items-center gap-1.5 mt-1">
+                                        <span class="text-[10px] px-1.5 py-0.2 rounded border ${typeColor}">${src.type}</span>
+                                        <span class="text-[10px] text-slate-500 font-mono-code">${(src.content || "").length.toLocaleString()} 字</span>
+                                    </div>
+                                </div>
+                            </div>
+                            ${!src.id.startsWith("src_ch") && src.id !== "src_world" && src.id !== "src_rules" ? `
+                                <button onclick="event.stopPropagation(); deleteKnowledgeSource('${src.id}')" class="text-slate-500 hover:text-red-400 px-1" title="刪除此來源"><i class="fa-solid fa-trash-can"></i></button>
+                            ` : ""}
+                        </div>
+                    `;
+                }).join("");
+            }
+
+            const activeSrc = sources.find(s => s.id === selectedSourceId) || sources[0];
+            const readerTitle = document.getElementById("sourceReaderTitle");
+            const readerMeta = document.getElementById("sourceReaderMeta");
+            const readerBody = document.getElementById("sourceReaderBody");
+            if (activeSrc && readerTitle && readerBody) {
+                readerTitle.innerText = activeSrc.title;
+                readerMeta.innerText = `${activeSrc.type} · ${activeSrc.timestamp || ""} · ${activeSrc.enabled ? "✅ 已注入GM" : "⏸️ 未啟用"}`;
+                readerBody.innerText = activeSrc.content;
+            }
+
+            const mobEl = document.getElementById("mobileLoreContent");
+            if (mobEl) {
+                mobEl.innerHTML = sources.map(s => `
+                    <div class="bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-orange-300">${s.title}</span>
+                            <span class="text-[10px] text-slate-400">${s.enabled ? "✅ 啟用中" : "未啟用"}</span>
+                        </div>
+                        <p class="text-[11px] text-slate-300 line-clamp-3">${s.content}</p>
+                    </div>
+                `).join("");
+            }
+        }
+
+        function selectKnowledgeSource(id) {
+            selectedSourceId = id;
+            renderLoreDatabase();
+        }
+
+        function toggleSourceEnabled(id) {
+            const src = gameState.knowledgeSources.find(s => s.id === id);
+            if (src) {
+                src.enabled = !src.enabled;
+                renderLoreDatabase();
+                saveStateToLocal();
+            }
+        }
+
+        function deleteKnowledgeSource(id) {
+            gameState.knowledgeSources = gameState.knowledgeSources.filter(s => s.id !== id);
+            if (selectedSourceId === id) {
+                selectedSourceId = gameState.knowledgeSources[0]?.id || "";
+            }
+            renderLoreDatabase();
+            saveStateToLocal();
+        }
+
+        function toggleAutoSaveTurnSource(checked) {
+            gameState.autoSaveTurnSource = checked;
+            saveStateToLocal();
+        }
+
+        function autoAppendTurnToKnowledgeSource(userText, mechSummary, gmPlainText) {
+            if (!gameState.autoSaveTurnSource) return;
+            let liveSrc = gameState.knowledgeSources.find(s => s.id === "src_live_session");
+            const timeStamp = `第${gameState.world.day}天 ${String(gameState.world.hour).padStart(2,'0')}:${String(gameState.world.minute).padStart(2,'0')}`;
+            const entryText = `\n[${timeStamp} @ ${gameState.world.currentLocationName}]\n• 伊格尼斯行動：${userText} (${mechSummary})\n• GM 輸出紀錄：${gmPlainText.trim()}\n`;
+
+            if (!liveSrc) {
+                liveSrc = {
+                    id: "src_live_session",
+                    title: "第三章續寫：破岩鎮對話自動存檔來源",
+                    type: "自動回合存檔",
+                    enabled: true,
+                    timestamp: timeStamp,
+                    content: `=== 破岩鎮熔爐關口即時自動記憶來源 ===\n${entryText}`
+                };
+                gameState.knowledgeSources.unshift(liveSrc);
+            } else {
+                liveSrc.timestamp = timeStamp;
+                liveSrc.content += entryText;
+            }
+            selectedSourceId = "src_live_session";
+            renderLoreDatabase();
+            saveStateToLocal();
+        }
+
+        function saveCurrentChatAsSource() {
+            if (!gameState.history || gameState.history.length === 0) {
+                showAlert("尚無新對話", "目前還沒有新的對話紀錄可供封存，請先在右側執行一次行動！");
+                return;
+            }
+            const timeStamp = `第${gameState.world.day}天 ${String(gameState.world.hour).padStart(2,'0')}:${String(gameState.world.minute).padStart(2,'0')}`;
+            const transcript = gameState.history.map(h => `${h.role === "user" ? "【伊格尼斯】" : "【GM】"}：${h.text}`).join("\n\n");
+            const newId = "src_snap_" + Date.now();
+            gameState.knowledgeSources.unshift({
+                id: newId,
+                title: `對話封存來源 (${gameState.world.currentLocationName} - ${timeStamp})`,
+                type: "自動回合存檔",
+                enabled: true,
+                timestamp: timeStamp,
+                content: transcript
+            });
+            selectedSourceId = newId;
+            renderLoreDatabase();
+            saveStateToLocal();
+            showAlert("來源封存成功", "已將當前對話紀錄新增為一筆獨立的知識庫來源，AI GM 將在後續回合持續參考！");
+        }
+
+        function toggleNewSourceEditor() {
+            const box = document.getElementById("newSourceEditorBox");
+            if (box) box.classList.toggle("hidden");
+        }
+
+        function addCustomTextSource() {
+            const titleEl = document.getElementById("newSourceTitle");
+            const contentEl = document.getElementById("newSourceContent");
+            const title = titleEl.value.trim();
+            const content = contentEl.value.trim();
+            if (!title || !content) return;
+
+            const newId = "src_custom_" + Date.now();
+            gameState.knowledgeSources.unshift({
+                id: newId,
+                title,
+                type: "自訂筆記",
+                enabled: true,
+                timestamp: "手動新增",
+                content
+            });
+            titleEl.value = "";
+            contentEl.value = "";
+            document.getElementById("newSourceEditorBox").classList.add("hidden");
+            selectedSourceId = newId;
+            renderLoreDatabase();
+            saveStateToLocal();
+        }
+
+        function handleUploadSourceFiles(event) {
+            const files = Array.from(event.target.files || []);
+            if (files.length === 0) return;
+
+            files.forEach(file => {
+                const fileNameLower = file.name.toLowerCase();
+                // Support direct .docx Word document extraction via mammoth.js
+                if (fileNameLower.endsWith(".docx") && window.mammoth) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        mammoth.extractRawText({ arrayBuffer: e.target.result })
+                            .then(result => {
+                                const textContent = result.value || "";
+                                const newId = "src_file_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+                                gameState.knowledgeSources.unshift({
+                                    id: newId,
+                                    title: `📎 ${file.name}`,
+                                    type: "玩家上傳檔案",
+                                    enabled: true,
+                                    timestamp: `${Math.round(file.size / 1024)} KB · ${textContent.length.toLocaleString()} 字`,
+                                    content: textContent // 無字數截斷限制，完整載入數十萬字文本
+                                });
+                                selectedSourceId = newId;
+                                renderLoreDatabase();
+                                saveStateToLocal();
+                            })
+                            .catch(err => {
+                                showAlert("Word 檔案解析失敗", `無法解析 ${file.name}：${err.message}`);
+                            });
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const textContent = e.target.result || "";
+                        const newId = "src_file_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+                        gameState.knowledgeSources.unshift({
+                            id: newId,
+                            title: `📎 ${file.name}`,
+                            type: "玩家上傳檔案",
+                            enabled: true,
+                            timestamp: `${Math.round(file.size / 1024)} KB · ${textContent.length.toLocaleString()} 字`,
+                            content: textContent // 已解除 35,000 字限制，完整保留數十萬字長文本
+                        });
+                        selectedSourceId = newId;
+                        renderLoreDatabase();
+                        saveStateToLocal();
+                    };
+                    reader.readAsText(file);
+                }
+            });
+            event.target.value = "";
+        }
+
+        // =========================================================================
+        // 11. RULEBOOK & CLASS MOVES CODEX (規則與職業動作圖鑑檢索)
+        // =========================================================================
+        function setCodexCategory(cat) {
+            currentCodexCategory = cat;
+            document.querySelectorAll(".codex-tab-btn").forEach(btn => {
+                btn.className = "codex-tab-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700";
+            });
+            const active = document.getElementById("codexTab_" + cat);
+            if (active) {
+                active.className = "codex-tab-btn px-2.5 py-1.5 rounded-lg bg-sky-600 text-white font-bold";
+            }
+            renderCodexEntries();
+        }
+
+        function renderCodexEntries() {
+            const container = document.getElementById("codexListContainer");
+            if (!container) return;
+            const query = (document.getElementById("codexSearchInput")?.value || "").trim().toLowerCase();
+
+            const filtered = DW_CODEX_DATA.filter(entry => {
+                if (currentCodexCategory !== "ALL" && entry.category !== currentCodexCategory) return false;
+                if (!query) return true;
+                return entry.title.toLowerCase().includes(query) ||
+                       entry.trigger.toLowerCase().includes(query) ||
+                       entry.detail.toLowerCase().includes(query) ||
+                       entry.stat.toLowerCase().includes(query);
+            });
+
+            container.innerHTML = filtered.map(entry => {
+                const isLearned = entry.level.includes("已習得");
+                const badgeStyle = isLearned ? "bg-orange-500/20 text-orange-300 border-orange-500/40" :
+                                   entry.category === "基本動作" ? "bg-sky-500/20 text-sky-300 border-sky-500/40" :
+                                   "bg-slate-800 text-slate-300 border-slate-700";
+                return `
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800/90 flex flex-col justify-between gap-2">
+                        <div>
+                            <div class="flex justify-between items-start gap-2 mb-1">
+                                <h3 class="font-bold text-white text-xs sm:text-sm">${entry.title}</h3>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded border shrink-0 font-mono-code ${badgeStyle}">${entry.level}</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-[11px] text-amber-300/90 mb-1.5">
+                                <span><i class="fa-solid fa-bolt mr-1"></i>觸發：${entry.trigger}</span>
+                            </div>
+                            <p class="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">${entry.detail}</p>
+                        </div>
+                        <div class="pt-1.5 border-t border-slate-900 flex justify-between items-center text-[10px] text-slate-400 font-mono-code">
+                            <span>分類：${entry.category}</span>
+                            <span class="text-sky-300 font-bold">檢定：${entry.stat}</span>
+                        </div>
+                    </div>
+                `;
+            }).join("") || `<div class="col-span-2 text-center text-slate-500 py-8">找不到符合「${query}」的規則條目</div>`;
+        }
+
+        function updateStoryTranscriptBox() {
+            const box = document.getElementById("storyTranscriptBox");
+            if (!box) return;
+            let text = `========================================\n《地城世界：新月島餘燼》伊格尼斯冒險存檔\n時間：第 ${gameState.world.day} 天 ${String(gameState.world.hour).padStart(2,'0')}:${String(gameState.world.minute).padStart(2,'0')} | 地點：${gameState.world.currentLocationName}\n角色：${gameState.character.name} (Lv.${gameState.character.level}) | HP: ${gameState.character.hp}/${gameState.character.maxHp} | XP: ${gameState.character.xp}/10 | 金幣: ${gameState.character.gold}G\n========================================\n\n`;
+            text += gameState.chapterSummaries.join("\n\n") + "\n\n--- 【第三章續寫：破岩鎮熔爐關口與核心礦井即時紀錄】 ---\n\n";
+            gameState.history.forEach(h => {
+                text += `${h.role === "user" ? "【伊格尼斯】" : "【GM】"}：\n${h.text}\n\n`;
+            });
+            box.value = text;
+        }
+
+        function copyStoryTranscript() {
+            const box = document.getElementById("storyTranscriptBox");
+            box.select();
+            document.execCommand("copy");
+            showAlert("複製成功", "已將完整小說體冒險存檔複製到剪貼簿！");
+        }
+
+        function exportGameStateJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(gameState, null, 2));
+            const dlAnchor = document.createElement("a");
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", `ignis_dw_save_day${gameState.world.day}.json`);
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+        }
+
+        function importGameStateJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const loaded = JSON.parse(e.target.result);
+                    if (loaded && loaded.character && loaded.world) {
+                        normalizeLoadedState(loaded);
+                        renderAllUI();
+                        closeModal("archiveModal");
+                        showAlert("讀檔成功", `已成功從雲端資料夾載入【${gameState.character.name}】位於【${gameState.world.currentLocationName}】的完整冒險與記憶來源！`);
+                    }
+                } catch (err) {
+                    showAlert("讀檔失敗", "JSON 檔案格式不正確。");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // =========================================================================
+        // 12. GITHUB GIST 1-CLICK CROSS-DEVICE CLOUD SYNC (手機 ⇄ 電腦一鍵雲端同步)
+        // =========================================================================
+        function initCloudSyncInputs() {
+            const savedToken = localStorage.getItem("dw_ignis_gh_token") || "";
+            const savedGistId = localStorage.getItem("dw_ignis_gist_id") || "";
+            const tEl = document.getElementById("githubTokenInput");
+            const gEl = document.getElementById("githubGistIdInput");
+            const sEl = document.getElementById("gistSyncStatus");
+            if (tEl) tEl.value = savedToken;
+            if (gEl) gEl.value = savedGistId;
+            if (sEl && savedGistId) {
+                sEl.innerText = `已綁定 ID: ${savedGistId.slice(0, 8)}...`;
+                sEl.className = "text-[10px] font-mono-code text-emerald-400";
+            }
+        }
+
+        async function cloudPushToGist() {
+            const token = document.getElementById("githubTokenInput").value.trim();
+            let gistId = document.getElementById("githubGistIdInput").value.trim();
+            if (!token) {
+                showAlert("請輸入 GitHub Token", "請先在欄位中輸入具備 <code>gist</code> 權限的 GitHub Personal Access Token（僅儲存於本機瀏覽器）。");
+                return;
+            }
+            localStorage.setItem("dw_ignis_gh_token", token);
+
+            const statusEl = document.getElementById("gistSyncStatus");
+            if (statusEl) statusEl.innerText = "☁️ 正在上傳同步中...";
+
+            const payload = {
+                description: "地城世界：新月島餘燼 - 伊格尼斯跨裝置雲端存檔",
+                public: false,
+                files: {
+                    "ignis_dw_cloud_save.json": {
+                        content: JSON.stringify(gameState)
+                    }
+                }
+            };
+
+            try {
+                const url = gistId ? `https://api.github.com/gists/${gistId}` : "https://api.github.com/gists";
+                const method = gistId ? "PATCH" : "POST";
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Accept": "application/vnd.github+json",
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error(`GitHub API 回應 ${res.status}`);
+                const data = await res.json();
+                gistId = data.id;
+                localStorage.setItem("dw_ignis_gist_id", gistId);
+                document.getElementById("githubGistIdInput").value = gistId;
+                if (statusEl) {
+                    statusEl.innerText = `✅ 已同步 (${new Date().toLocaleTimeString()})`;
+                    statusEl.className = "text-[10px] font-mono-code text-emerald-400";
+                }
+                showAlert("雲端上傳成功！", `已將最新進度、對話紀錄與知識庫來源上傳至私密雲端！<br><br>您的雲端存檔 ID 為：<br><code class="bg-slate-950 px-2 py-1 rounded text-amber-300 select-all">${gistId}</code><br><span class="text-[11px] text-slate-400">（首次在另一台裝置同步時，貼上此 ID 與 Token 即可一鍵拉取）</span>`);
+            } catch (err) {
+                if (statusEl) statusEl.innerText = "❌ 同步失敗";
+                showAlert("雲端上傳失敗", `請檢查 GitHub Token 是否有勾選 gist 權限，或確認存檔 ID 是否正確。<br>錯誤訊息：${err.message}`);
+            }
+        }
+
+        async function cloudPullFromGist() {
+            const token = document.getElementById("githubTokenInput").value.trim();
+            const gistId = document.getElementById("githubGistIdInput").value.trim();
+            if (!gistId) {
+                showAlert("請輸入雲端存檔 ID", "請填入您在另一台裝置上傳時產生的「雲端存檔 ID (Gist ID)」。");
+                return;
+            }
+            if (token) localStorage.setItem("dw_ignis_gh_token", token);
+            localStorage.setItem("dw_ignis_gist_id", gistId);
+
+            const statusEl = document.getElementById("gistSyncStatus");
+            if (statusEl) statusEl.innerText = "📥 正在從雲端下載...";
+
+            try {
+                const headers = { "Accept": "application/vnd.github+json" };
+                if (token) headers["Authorization"] = `Bearer ${token}`;
+                const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
+                if (!res.ok) throw new Error(`GitHub API 回應 ${res.status}`);
+                const data = await res.json();
+                const fileObj = data.files["ignis_dw_cloud_save.json"] || Object.values(data.files)[0];
+                if (!fileObj) throw new Error("找不到存檔內容");
+
+                let rawJson = fileObj.content;
+                if (fileObj.truncated && fileObj.raw_url) {
+                    const rawRes = await fetch(fileObj.raw_url);
+                    rawJson = await rawRes.text();
+                }
+
+                const loaded = JSON.parse(rawJson);
+                normalizeLoadedState(loaded);
+                renderAllUI();
+                if (statusEl) {
+                    statusEl.innerText = `✅ 已拉取最新 (${new Date().toLocaleTimeString()})`;
+                    statusEl.className = "text-[10px] font-mono-code text-emerald-400";
+                }
+                showAlert("雲端同步成功！", `已成功將進度同步至【${gameState.world.currentLocationName}】（第 ${gameState.world.day} 天 ${String(gameState.world.hour).padStart(2,'0')}:${String(gameState.world.minute).padStart(2,'0')}）！`);
+            } catch (err) {
+                if (statusEl) statusEl.innerText = "❌ 拉取失敗";
+                showAlert("雲端拉取失敗", `無法讀取雲端存檔：${err.message}`);
+            }
+        }
+
+        function switchMobileTab(tabId, btnEl) {
+            document.querySelectorAll(".mobile-panel").forEach(el => el.classList.remove("active-mobile-tab"));
+            const target = document.getElementById(tabId);
+            if (target) target.classList.add("active-mobile-tab");
+
+            document.querySelectorAll(".mobile-nav-btn").forEach(b => {
+                b.classList.remove("text-orange-400");
+                b.classList.add("text-slate-400");
+            });
+            if (btnEl) {
+                btnEl.classList.remove("text-slate-400");
+                btnEl.classList.add("text-orange-400");
+            }
+            if (tabId === "tab-map") {
+                setTimeout(drawMap, 50);
+            }
+        }
+
+        function openModal(id) {
+            const el = document.getElementById(id);
+            if (el) { el.classList.remove("hidden"); el.classList.add("flex"); }
+        }
+        function closeModal(id) {
+            const el = document.getElementById(id);
+            if (el) { el.classList.add("hidden"); el.classList.remove("flex"); }
+        }
+        function showAlert(title, msg) {
+            document.getElementById("alertMessage").innerHTML = `<strong class="block text-base text-white mb-1.5">${title}</strong>${msg}`;
+            openModal("alertModal");
+        }
+
+        function updateApiStatusIndicator() {
+            const dot = document.getElementById("apiStatusDot");
+            const txt = document.getElementById("apiStatusText");
+            if (apiKey) {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                txt.innerText = `${selectedModel.replace("-preview", "")}`;
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+                txt.innerText = "內建引擎 / 設定API";
+            }
+        }
+
+        function toggleCustomModelInput() {
+            const val = document.getElementById("modelSelect").value;
+            const wrap = document.getElementById("customModelWrapper");
+            if (val === "custom") {
+                wrap.classList.remove("hidden");
+            } else {
+                wrap.classList.add("hidden");
+            }
+        }
+
+        function saveSettings() {
+            apiKey = document.getElementById("apiKeyInput").value.trim();
+            const selVal = document.getElementById("modelSelect").value;
+            if (selVal === "custom") {
+                selectedModel = document.getElementById("customModelInput").value.trim() || "gemini-3.1-pro-preview";
+            } else {
+                selectedModel = selVal;
+            }
+            localStorage.setItem("dw_ignis_api_key", apiKey);
+            localStorage.setItem("dw_ignis_model", selectedModel);
+            updateApiStatusIndicator();
+            closeModal("settingsModal");
+            if (apiKey) {
+                addChatMessage("系統", `✅ 已儲存 Gemini API Key（當前使用模型：<code>${selectedModel}</code>）。現在起每次行動都將結合「知識庫來源」即時回應！`, "system");
+            } else {
+                addChatMessage("系統", `ℹ️ 目前使用內建《新月島：破岩鎮篇》本地規則引擎模式。隨時可於右上角輸入 API Key 切換為雲端 AI GM。`, "system");
+            }
+        }
+    </script>
+</body>
+</html>
